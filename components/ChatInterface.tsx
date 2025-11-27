@@ -1,12 +1,13 @@
 "use client";
 
 import { useChat, Message } from "ai/react";
-import { Send, Mic, Paperclip, Phone, X, User, Sparkles, Volume2 } from "lucide-react";
+import { Send, Mic, Paperclip, Phone, X, User, Sparkles, Volume2, Trash2 } from "lucide-react"; // Trash2 icon add kiya
 import { useRef, useEffect, useState, ChangeEvent } from "react";
 import MessageBubble from "./MessageBubble";
 
 export default function ChatInterface() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading, append } = useChat();
+  // Yahan 'setMessages' add kiya hai memory load karne ke liye
+  const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -18,7 +19,33 @@ export default function ChatInterface() {
   const [voiceGender, setVoiceGender] = useState<'female' | 'male'>('female');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // Load Voices (Aur wait karo taaki Google voices load ho jayein)
+  // --- PERMANENT MEMORY LOGIC START ---
+  // Load chat on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("amina_memory_v1");
+    if (saved) {
+        try { setMessages(JSON.parse(saved)); } catch(e){}
+    }
+  }, []);
+
+  // Save chat on update
+  useEffect(() => {
+    if (messages.length > 0) {
+        localStorage.setItem("amina_memory_v1", JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  // Clear memory function
+  const clearChat = () => {
+      if(confirm("Are you sure you want to delete memory?")) {
+          localStorage.removeItem("amina_memory_v1");
+          setMessages([]);
+      }
+  };
+  // --- PERMANENT MEMORY LOGIC END ---
+
+
+  // Load Voices
   useEffect(() => {
     const loadVoices = () => {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -29,7 +56,6 @@ export default function ChatInterface() {
       }
     };
     loadVoices();
-    // Chrome sometimes needs a little time to load voices
     if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.onvoiceschanged = loadVoices;
     }
@@ -39,47 +65,30 @@ export default function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // --- HELPERS (UPDATED FIX) ---
+  // --- HELPERS ---
   const cleanTextForSpeech = (text: string) => {
-    // Ye updated Regex ab Hearts, Sparkles, Hands sab remove karega
     const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2300}-\u{23FF}]/gu;
-    
-    return text
-      .replace(emojiRegex, '')      // Emojis hatao
-      .replace(/[*#_`~-]/g, '')     // Markdown symbols hatao
-      .trim();
+    return text.replace(emojiRegex, '').replace(/[*#_`~-]/g, '').trim();
   };
 
   // --- SMART VOICE SELECTOR ---
   const getBestVoice = (lang: string, gender: 'female' | 'male') => {
     const femaleKeywords = ["Google US English", "Google", "Natural", "Samantha", "Aria"];
     const maleKeywords = ["Google UK English Male", "David", "Mark"];
-
     const keywords = gender === 'female' ? femaleKeywords : maleKeywords;
-
-    // 1. Try strict match
-    let selectedVoice = voices.find(v => 
-      v.lang.includes(lang) && 
-      keywords.some(k => v.name.includes(k))
-    );
-
-    // 2. Fallback
+    let selectedVoice = voices.find(v => v.lang.includes(lang) && keywords.some(k => v.name.includes(k)));
     return selectedVoice || voices.find(v => v.lang.includes(lang));
   };
 
   // --- SPEAK FUNCTION ---
   const speak = (rawText: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
-
     setIsListening(false); 
     window.speechSynthesis.cancel();
-
     const textToSpeak = cleanTextForSpeech(rawText);
     if (!textToSpeak) { if (isCallActive) startListening(); return; }
-
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     
-    // Language Detection
     let langCode = 'en-US';
     if (/[\u0600-\u06FF]/.test(textToSpeak)) langCode = 'ar'; 
     else if (textToSpeak.toLowerCase().includes('bonjour') || textToSpeak.toLowerCase().includes('ça va')) langCode = 'fr';
@@ -87,65 +96,30 @@ export default function ChatInterface() {
     const voice = getBestVoice(langCode, voiceGender);
     if(voice) utterance.voice = voice;
 
-    // --- CUTE VOICE SETTINGS ---
-    if (voiceGender === 'female') {
-        utterance.pitch = 1.15; // Higher pitch = Cuter/Younger
-        utterance.rate = 1.05;  // Slightly faster = More energetic
-    } else {
-        utterance.pitch = 0.9;  // Deeper for male
-        utterance.rate = 1.0;
-    }
+    if (voiceGender === 'female') { utterance.pitch = 1.15; utterance.rate = 1.05; } 
+    else { utterance.pitch = 0.9; utterance.rate = 1.0; }
 
     utterance.onstart = () => setStatusText(voiceGender === 'female' ? "Amina is speaking..." : "Mohammad is speaking...");
-
     utterance.onend = () => {
-      if (isCallActive) {
-        setStatusText("Listening...");
-        // Instant restart
-        startListening(); 
-      }
+      if (isCallActive) { setStatusText("Listening..."); startListening(); }
     };
-
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- LISTEN FUNCTION (Mic) ---
+  // --- LISTEN FUNCTION ---
   const startListening = () => {
     if (!isCallActive) return;
-
-    if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) {
-      return; // Silent fail if not supported
-    }
-
+    if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) return;
     // @ts-ignore
     const recognition = new window.webkitSpeechRecognition();
-    recognition.continuous = false; 
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      setStatusText("Listening...");
-    };
-
+    recognition.continuous = false; recognition.interimResults = false; recognition.lang = 'en-US';
+    recognition.onstart = () => { setIsListening(true); setStatusText("Listening..."); };
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
-      if (transcript.trim()) {
-        setStatusText("Thinking...");
-        setIsListening(false);
-        append({ role: 'user', content: transcript });
-      }
+      if (transcript.trim()) { setStatusText("Thinking..."); setIsListening(false); append({ role: 'user', content: transcript }); }
     };
-
-    recognition.onerror = () => {
-      setIsListening(false);
-      setStatusText("Tap Avatar to Speak");
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
+    recognition.onerror = () => { setIsListening(false); setStatusText("Tap Avatar to Speak"); };
+    recognition.onend = () => { setIsListening(false); };
     try { recognition.start(); } catch (e) {}
   };
 
@@ -180,39 +154,33 @@ export default function ChatInterface() {
   return (
     <div className="flex flex-col h-screen bg-black text-white font-sans relative">
       
-      {/* CALL MODE OVERLAY */}
-      {isCallActive && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
-           <button onClick={() => {setIsCallActive(false); window.speechSynthesis.cancel();}} className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700"><X size={24} /></button>
-           
-           <div className="relative cursor-pointer" onClick={() => !isListening && startListening()}>
-             <div className={`absolute inset-0 ${voiceGender === 'female' ? 'bg-purple-600' : 'bg-blue-600'} rounded-full blur-3xl opacity-40 ${isListening ? 'animate-pulse scale-125' : ''} transition-all duration-1000`}></div>
-             <div className={`w-48 h-48 rounded-full overflow-hidden border-4 ${voiceGender === 'female' ? 'border-purple-500' : 'border-blue-500'} relative z-10`}>
-                <img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" />
-             </div>
-             {isListening && <div className="absolute bottom-2 right-2 bg-green-500 p-2 rounded-full border-2 border-black z-20 animate-bounce"><Mic size={20} fill="white" /></div>}
-           </div>
-
-           <h2 className="mt-10 text-3xl font-bold text-white">{voiceGender === 'female' ? "Amina" : "Mohammad"}</h2>
-           
-           <p className={`text-lg mt-2 font-medium animate-pulse ${statusText === 'Listening...' ? 'text-green-400' : 'text-purple-300'}`}>
-             {statusText || "Tap Avatar to Start"}
-           </p>
-           
-           <button onClick={() => setVoiceGender(v => v === 'female' ? 'male' : 'female')} className="absolute bottom-12 flex items-center gap-3 px-6 py-3 bg-white/10 rounded-full border border-white/10"><Sparkles size={18}/><span className="text-sm">Switch Voice</span></button>
-        </div>
-      )}
-
-      {/* HEADER */}
+      {/* HEADER WITH CLEAR MEMORY BUTTON */}
       <header className="h-16 border-b border-white/10 flex items-center px-4 justify-between bg-black/80 fixed w-full top-0 z-50">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-purple-500"><img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" /></div>
           <div><h1 className="font-bold text-lg text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">AMINA AI</h1><p className="text-[10px] text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>Online</p></div>
         </div>
-        <button onClick={() => { setIsCallActive(true); setTimeout(() => startListening(), 500); }} className="p-2 bg-green-600/20 text-green-400 rounded-full"><Phone size={20} /></button>
+        <div className="flex gap-2">
+            <button onClick={clearChat} className="p-2 bg-red-600/20 text-red-400 rounded-full hover:bg-red-600/40" title="Clear Memory"><Trash2 size={20} /></button>
+            <button onClick={() => { setIsCallActive(true); setTimeout(() => startListening(), 500); }} className="p-2 bg-green-600/20 text-green-400 rounded-full"><Phone size={20} /></button>
+        </div>
       </header>
 
-      {/* MAIN CHAT */}
+      {/* REST OF THE UI IS SAME... */}
+      {isCallActive && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
+           <button onClick={() => {setIsCallActive(false); window.speechSynthesis.cancel();}} className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700"><X size={24} /></button>
+           <div className="relative cursor-pointer" onClick={() => !isListening && startListening()}>
+             <div className={`absolute inset-0 ${voiceGender === 'female' ? 'bg-purple-600' : 'bg-blue-600'} rounded-full blur-3xl opacity-40 ${isListening ? 'animate-pulse scale-125' : ''} transition-all duration-1000`}></div>
+             <div className={`w-48 h-48 rounded-full overflow-hidden border-4 ${voiceGender === 'female' ? 'border-purple-500' : 'border-blue-500'} relative z-10`}><img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" /></div>
+             {isListening && <div className="absolute bottom-2 right-2 bg-green-500 p-2 rounded-full border-2 border-black z-20 animate-bounce"><Mic size={20} fill="white" /></div>}
+           </div>
+           <h2 className="mt-10 text-3xl font-bold text-white">{voiceGender === 'female' ? "Amina" : "Mohammad"}</h2>
+           <p className={`text-lg mt-2 font-medium animate-pulse ${statusText === 'Listening...' ? 'text-green-400' : 'text-purple-300'}`}>{statusText || "Tap Avatar to Start"}</p>
+           <button onClick={() => setVoiceGender(v => v === 'female' ? 'male' : 'female')} className="absolute bottom-12 flex items-center gap-3 px-6 py-3 bg-white/10 rounded-full border border-white/10"><Sparkles size={18}/><span className="text-sm">Switch Voice</span></button>
+        </div>
+      )}
+
       <main className="flex-1 overflow-y-auto pt-20 pb-24 px-4 md:px-20 lg:px-64 scroll-smooth">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center animate-in fade-in duration-700">
@@ -221,21 +189,13 @@ export default function ChatInterface() {
             <p className="text-lg text-gray-300">أنا أمينة، كيف حالك اليوم؟</p>
           </div>
         )}
-        {messages.map((m: any) => (
-            <MessageBubble key={m.id} role={m.role} content={m.content} attachment={m.experimental_attachments?.[0]?.url} />
-        ))}
+        {messages.map((m: any) => ( <MessageBubble key={m.id} role={m.role} content={m.content} attachment={m.experimental_attachments?.[0]?.url} /> ))}
         <div ref={messagesEndRef} />
       </main>
 
-      {/* INPUT */}
       <footer className="fixed bottom-0 w-full p-4 bg-gradient-to-t from-black via-black/90 z-50">
         <div className="max-w-3xl mx-auto">
-          {selectedImage && (
-             <div className="mb-2 relative w-fit animate-in slide-in-from-bottom-2">
-                 <img src={selectedImage} alt="Selected" className="w-20 h-20 object-cover rounded-lg border border-purple-500" />
-                 <button onClick={clearImage} className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"><X size={12} fill="white"/></button>
-             </div>
-          )}
+          {selectedImage && ( <div className="mb-2 relative w-fit animate-in slide-in-from-bottom-2"><img src={selectedImage} alt="Selected" className="w-20 h-20 object-cover rounded-lg border border-purple-500" /><button onClick={clearImage} className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"><X size={12} fill="white"/></button></div> )}
           <form onSubmit={handleFormSubmit} className="relative flex items-center gap-2 bg-[#1a1a1a] border border-white/10 p-2 pl-4 rounded-full shadow-2xl">
             <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
             <button type="button" onClick={() => fileInputRef.current?.click()} className="text-gray-400 hover:text-purple-400"><Paperclip size={20} /></button>
