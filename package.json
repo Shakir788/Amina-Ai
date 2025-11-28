@@ -11,18 +11,22 @@
   "dependencies": {
     "@ai-sdk/openai": "^0.0.14",
     "@google/generative-ai": "^0.24.1",
-    "ai": "3.1.14",
+    "ai": "^2.2.37",
     "autoprefixer": "^10.4.22",
+    "bufferutil": "^4.0.9",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
+    "edge-tts": "^1.0.1",
     "framer-motion": "^11.2.0",
     "lucide-react": "^0.378.0",
+    "msedge-tts": "^2.0.2",
     "next": "14.2.3",
     "openai": "^4.47.1",
     "react": "^18",
     "react-dom": "^18",
     "react-markdown": "^9.0.1",
-    "tailwind-merge": "^2.3.0"
+    "tailwind-merge": "^2.3.0",
+    "utf-8-validate": "^6.0.5"
   },
   "devDependencies": {
     "@types/node": "^20",
