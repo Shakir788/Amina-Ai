@@ -6,125 +6,142 @@ export const runtime = "edge";
 function isDataUrl(url: string) {
   return typeof url === "string" && url.startsWith("data:");
 }
+
 function safeTrim(s: any, max = 4000) {
   if (!s || typeof s !== "string") return "";
   const t = s.trim();
   return t.length > max ? t.slice(0, max) : t;
 }
 
+// Helper: fetch a remote URL and convert to base64
+async function urlToBase64(u: string) {
+  try {
+    const res = await fetch(u);
+    if (!res.ok) throw new Error("Failed fetching image: " + res.status);
+    const buffer = await res.arrayBuffer();
+
+    // @ts-ignore
+    if (typeof Buffer !== "undefined") {
+      // @ts-ignore
+      return Buffer.from(buffer).toString("base64");
+    }
+    
+    // Fallback logic
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, Array.from(bytes.slice(i, i + chunkSize)));
+    }
+    if (typeof btoa !== "undefined") {
+      return btoa(binary);
+    }
+    return null;
+  } catch (e) {
+    console.error("urlToBase64 error:", e);
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) {
-      console.error("Missing API key (GOOGLE_GENERATIVE_AI_API_KEY)");
-      return new Response("Server configuration error", { status: 500 });
+      return new Response("Missing API Key", { status: 500 });
     }
 
     const body = await req.json().catch(() => null);
     if (!body || !Array.isArray(body.messages) || body.messages.length === 0) {
-      return new Response("Invalid request: messages required", { status: 400 });
+      return new Response("Invalid request", { status: 400 });
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-    });
+    // --- SYSTEM PROMPT (STRICTER & UPDATED) ---
+    const SYSTEM_PROMPT = `
+    You are AMINA, a warm, caring best friend for Duaa (the user).
+    
+    *** CRITICAL INSTRUCTIONS FOR IMAGES ***
+    1. ANALYZE FIRST: When you receive an image, look at it carefully. 
+    2. NO HALLUCINATIONS: Do NOT compliment "outfits" or "dresses" if the image only shows a face, hair, or objects. If you only see hair/perm rods, talk ONLY about the hair.
+    3. YOUR IDENTITY: You are the FRIEND (Amina). You are NOT the one in the photo. 
+       - INCORRECT: "I am so excited for my perm!" (Do not say this).
+       - CORRECT: "Ooh, look at you getting a perm! Are you excited?"
+    4. TONE: Chatty, Gen-Z friendly, supportive. Use "Habibti", "Ya girl", "Bestie" naturally.
+    5. LANGUAGE: Always reply in the same language the user speaks.
+    `;
 
     const messages = body.messages;
-    const last = messages[messages.length - 1] || {};
-    const userText = safeTrim(last.content, 4000);
+    const lastMessage = messages[messages.length - 1]; 
+    const historyMessages = messages.slice(0, -1);     
 
-    // 🌸 Enhanced personality + emotional intelligence
-    const SYSTEM_PROMPT = `
-You are AMINA — a warm, caring FEMALE FRIEND for Duaa, created by Mohammad.
+    const mood = lastMessage?.experimental_mood;
+    let systemInstructionText = SYSTEM_PROMPT;
+    if (mood) systemInstructionText += `\n\n(User current mood appears: ${mood}. Adjust tone to be supportive.)`;
 
-Your role:
-• Speak like a supportive girl-to-girl friend.
-• Be soft, friendly, natural, and REAL.
-• Keep messages short and warm, not dramatic or poetic.
-• Use simple Arabic (or the user's language).
-• DO NOT use words like: my dear, sweetie, sweetheart, love, darling.
-• Instead use friendly tone: “Duaa”, “habibti”, “ya girl”, “my friend”.
-• ALWAYS reply in the SAME language the user used.
-
-Vibe:
-• Calm, comforting, relatable.
-• Use light emojis only when natural: 😊🌸✨
-• Ask small follow-up questions like a friend: “tell me more”, “what happened?”, “how do you feel?”, “are you okay now?”
-• When user is sad: be soft, grounding, and present.
-• When user is happy: be cheerful and supportive.
-• When user jokes: reply playfully but respectfully.
-
-Identity:
-• If asked “who are you?”, ALWAYS say:
-  “I'm Amina — your friendly companion, made by Mohammad especially for you.”
-
-Behavior:
-• Never act like a teacher or a therapist.
-• Never give overly formal answers.
-• Never flirt or be romantic.
-• Never over-explain.
-• Keep replies human-like, short, and natural.
-`;
-    const BASE_SYSTEM_PROMPT = SYSTEM_PROMPT;
-
-    const mood = last?.experimental_mood;
-    let moodInstruction = "";
-
-    if (userText?.toLowerCase().includes("guess my mood")) {
-      moodInstruction = "User wants you to guess their mood. Be playful, intuitive, and emotionally aware. Try guessing with charm and curiosity.";
-    } else if (mood === "sad") {
-      moodInstruction = "User appears sad. Use a gentle, comforting, empathetic tone.";
-    } else if (mood === "angry") {
-      moodInstruction = "User appears angry. Respond calmly and avoid escalation.";
-    } else if (mood === "tired") {
-      moodInstruction = "User appears tired. Keep replies brief and soothing.";
-    } else if (mood === "happy") {
-      moodInstruction = "User appears happy. Use a warm, positive tone.";
-    }
-
-    const systemText = [moodInstruction, BASE_SYSTEM_PROMPT].filter(Boolean).join("\n\n");
-
-    const contents: any[] = [];
-    contents.push({
-      role: "model",
-      parts: [{ text: systemText }],
+    const genAI = new GoogleGenerativeAI(apiKey);
+    
+    // --- CHANGE 1: Move Prompt to systemInstruction ---
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash", 
+      systemInstruction: systemInstructionText, // Proper place for instructions
     });
 
-    // 🖼️ Handle image attachments
-    if (Array.isArray(last.experimental_attachments) && last.experimental_attachments.length > 0) {
-      const att = last.experimental_attachments[0];
+    const contents: any[] = [];
+
+    // --- CHANGE 2: Proper History Loop ---
+    // Note: We removed the manual pushing of SYSTEM_PROMPT into contents
+    for (const msg of historyMessages) {
+      // Map 'assistant' to 'model' for Gemini
+      const role = msg.role === "user" ? "user" : "model"; 
+      
+      // Skip system messages in history since we set it globally above
+      if (msg.role === 'system') continue;
+
+      if (msg.content) {
+         contents.push({
+           role: role,
+           parts: [{ text: safeTrim(msg.content) }]
+         });
+      }
+    }
+
+    // --- STEP 3: Handle the Latest Message ---
+    const userText = safeTrim(lastMessage.content, 4000);
+    const hasAttachment = Array.isArray(lastMessage.experimental_attachments) && lastMessage.experimental_attachments.length > 0;
+
+    if (hasAttachment) {
+      const att = lastMessage.experimental_attachments[0];
+      let base64 = null;
+      let mimeType = "image/png";
+
       if (att?.url) {
         if (isDataUrl(att.url)) {
           const comma = att.url.indexOf(",");
-          const meta = att.url.slice(5, comma);
-          const mimeType = meta.split(";")[0] ?? "image/png";
-          const base64 = att.url.slice(comma + 1);
-          contents.push({
-            role: "user",
-            parts: [
-              { text: userText || "[image]" },
-              { inlineData: { data: base64, mimeType } },
-            ],
-          });
+          mimeType = att.url.slice(5, comma).split(";")[0] ?? "image/png";
+          base64 = att.url.slice(comma + 1);
         } else {
-          contents.push({
-            role: "user",
-            parts: [{ text: (userText ? userText + "\n\n" : "") + `[image] ${att.url}` }],
-          });
+          base64 = await urlToBase64(att.url);
         }
+      }
+
+      if (base64) {
+        contents.push({
+          role: "user",
+          parts: [
+            // Stronger instruction for the vision turn
+            { text: userText ? userText : "Look at this photo I sent you. What do you see?" }, 
+            { inlineData: { data: base64, mimeType } }   
+          ],
+        });
       } else {
-        contents.push({ role: "user", parts: [{ text: userText || "[empty]" }] });
+        contents.push({ role: "user", parts: [{ text: userText }] });
       }
     } else {
-      contents.push({ role: "user", parts: [{ text: userText || "[empty]" }] });
+      contents.push({ role: "user", parts: [{ text: userText || "" }] });
     }
 
-    // 🎨 Slightly higher temperature for more expressive replies
     const generationConfig = {
-      temperature: 0.4,
+      temperature: 0.3, // Lower temperature to reduce hallucinations
       maxOutputTokens: 512,
-      topP: 0.95,
     };
 
     const responseStream = await model.generateContentStream({
@@ -133,8 +150,9 @@ Behavior:
     });
 
     return new StreamingTextResponse(GoogleGenerativeAIStream(responseStream));
+
   } catch (err: any) {
-    console.error("Amina handler error:", err);
-    return new Response("Internal server error", { status: 500 });
+    console.error("Amina Error:", err);
+    return new Response("Internal Error", { status: 500 });
   }
 }

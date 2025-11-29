@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "ai/react";
-import { Send, Mic, Paperclip, Phone, X, Sparkles, Trash2 } from "lucide-react";
+import { Send, Mic, Paperclip, Phone, X, Trash2, Square } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
 import MessageBubble from "./MessageBubble";
 
@@ -11,20 +11,24 @@ export default function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
-  // Ref to control audio playback (stop/start)
+  // Ref to control audio playback
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // States
   const [isCallActive, setIsCallActive] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false); 
   const [statusText, setStatusText] = useState("");
   const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
+  // Local sending state for custom POST flow
+  const [sending, setSending] = useState(false);
+
   // Typing indicator
   const [isTyping, setIsTyping] = useState(false);
 
-  // --- PERMANENT MEMORY (debounced & limited) ---
+  // --- PERMANENT MEMORY ---
   const MAX_STORE_MESSAGES = 30;
   useEffect(() => {
     const saved = localStorage.getItem("amina_memory_v1");
@@ -34,28 +38,21 @@ export default function ChatInterface() {
         if (Array.isArray(parsed)) {
           setMessages(parsed.slice(-MAX_STORE_MESSAGES));
         }
-      } catch (e) {
-        // ignore parse errors
-      }
+      } catch (e) {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    // Debounce writes to avoid frequent localStorage operations
     if (messages.length === 0) return;
     const toStore = messages.slice(-MAX_STORE_MESSAGES).map((m: any) => {
       return { id: m.id, role: m.role, content: (m.content || "").slice(0, 1000) };
     });
-
     const id = setTimeout(() => {
       try {
         localStorage.setItem("amina_memory_v1", JSON.stringify(toStore));
-      } catch (e) {
-        // ignore storage errors (private mode etc.)
-      }
+      } catch (e) {}
     }, 400);
-
     return () => clearTimeout(id);
   }, [messages, setMessages]);
 
@@ -66,90 +63,79 @@ export default function ChatInterface() {
     }
   };
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   // --- HELPERS ---
   const cleanTextForSpeech = (text: string) => {
-    const emojiRegex =
-      /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2300}-\u{23FF}]/gu;
+    const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2300}-\u{23FF}]/gu;
     return text.replace(emojiRegex, "").replace(/[*#_`~-]/g, "").trim();
   };
 
-  // ---- MOOD DETECTION ----
   type Mood = "sad" | "angry" | "tired" | "happy" | "neutral";
-
   function detectMoodFromText(text: string): Mood {
     if (!text) return "neutral";
     const t = text.toLowerCase();
-
     if (/[😭😢😞😔😟]/.test(text)) return "sad";
     if (/[😡😤🤬]/.test(text)) return "angry";
     if (/[😴😪💤]/.test(text)) return "tired";
     if (/[😊😍😁😃😂🎉]/.test(text)) return "happy";
-
     const sadWords = ["sad", "cry", "hurt", "tired", "broken", "miss"];
     const angryWords = ["angry", "mad", "upset", "furious"];
     const tiredWords = ["tired", "sleepy", "exhausted"];
     const happyWords = ["happy", "good", "great", "awesome", "love", "fine", "alhamdulillah", "thanks"];
-
     if (sadWords.some((w) => t.includes(w))) return "sad";
     if (angryWords.some((w) => t.includes(w))) return "angry";
     if (tiredWords.some((w) => t.includes(w))) return "tired";
     if (happyWords.some((w) => t.includes(w))) return "happy";
-
     return "neutral";
   }
+
+  // --- NEW STOP FUNCTION ---
+  const stopSpeaking = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsSpeaking(false);
+      if (isCallActive) {
+        setStatusText("Listening...");
+        startListening();
+      } else {
+        setStatusText("");
+      }
+    }
+  };
 
   // ==========================================
   // --- SMART AUTO-LANGUAGE SPEAK FUNCTION ---
   // ==========================================
   const speak = async (rawText: string) => {
-    // Stop listening while speaking to avoid echo
     if (isCallActive) setIsListening(false);
+    stopSpeaking(); // Stop previous audio first
 
-    // Stop any currently playing audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-
-    // Clean text lightly
     const textToProcess = cleanTextForSpeech(rawText);
     if (!textToProcess) return;
 
-    // 1. Detect if text is Arabic (Checks for Arabic unicode range)
+    // Detect Language
     const isArabic = /[\u0600-\u06FF]/.test(textToProcess);
 
-    // 2. Select Voice based on Language AND Gender
     let selectedVoice = "";
-    
     if (isArabic) {
-      // Use High Quality Arabic Voices
-      selectedVoice = voiceGender === "female" 
-        ? "ar-EG-SalmaNeural"   // Egyptian Arabic (Female - Friendly)
-        : "ar-EG-ShakirNeural"; // Egyptian Arabic (Male)
+      selectedVoice = voiceGender === "female" ? "ar-EG-SalmaNeural" : "ar-EG-ShakirNeural";
     } else {
-      // Use High Quality English Voices
-      selectedVoice = voiceGender === "female" 
-        ? "en-US-AriaNeural"    // US English (Female - Expressive)
-        : "en-US-GuyNeural";    // US English (Male - Calm)
+      selectedVoice = voiceGender === "female" ? "en-US-AriaNeural" : "en-US-GuyNeural";
     }
 
-    // Set Status Text
     setStatusText(
       voiceGender === "female" 
         ? (isArabic ? "Amina (Arabic)..." : "Amina is speaking...") 
         : (isArabic ? "Mohammad (Arabic)..." : "Mohammad is speaking...")
     );
+    setIsSpeaking(true); // START VISUALIZER
 
     try {
-      // 3. Prepare SSML
-      // Only apply English "hmm/laugh" hacks if it's NOT Arabic (to avoid weird accents)
       let ssml = textToProcess;
-      
       if (!isArabic) {
         ssml = ssml
           .replace(/hmm/gi, "<break time='200ms'/> hmm <break time='300ms'/>")
@@ -158,7 +144,6 @@ export default function ChatInterface() {
           .replace(/\.{3}/g, "<break time='300ms'/>");
       }
 
-      // 4. Send Request
       const res = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,12 +157,12 @@ export default function ChatInterface() {
       const url = URL.createObjectURL(blob);
 
       const audio = new Audio(url);
-      audioRef.current = audio; // Store ref to handle cleanup/stopping
+      audioRef.current = audio;
 
-      // IMPORTANT: When audio finishes, resume listening if in call mode
       audio.onended = () => {
-        URL.revokeObjectURL(url); // Memory cleanup
+        URL.revokeObjectURL(url);
         audioRef.current = null;
+        setIsSpeaking(false); // STOP VISUALIZER
         
         if (isCallActive) {
           setStatusText("Listening...");
@@ -192,16 +177,19 @@ export default function ChatInterface() {
     } catch (e) {
       console.log("SPEAK ERROR:", e);
       setStatusText("Error playing audio");
+      setIsSpeaking(false);
     }
   };
 
-  // --- SpeechRecognition: single instance + cleanup ---
+  // --- Speech Recognition ---
   let recognitionRef: any = null;
   const getRecognitionCtor = () =>
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
 
   const startListening = () => {
     if (!isCallActive) return;
+    if (isSpeaking) return;
+
     const Ctor = getRecognitionCtor();
     if (!Ctor) {
       setStatusText("Speech recognition not supported");
@@ -234,18 +222,12 @@ export default function ChatInterface() {
         setIsListening(false);
       };
       recognitionRef.start();
-    } catch (e) {
-      // sometimes start throws if started already
-    }
+    } catch (e) {}
   };
 
   useEffect(() => {
-    // cleanup on unmount
     return () => {
-      try {
-        recognitionRef?.stop?.();
-      } catch (e) {}
-      
+      try { recognitionRef?.stop?.(); } catch (e) {}
       if(audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
@@ -254,7 +236,6 @@ export default function ChatInterface() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // speak assistant replies when call active
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
     if (isCallActive && !isLoading && lastMessage && lastMessage.role === "assistant") {
@@ -263,17 +244,14 @@ export default function ChatInterface() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, isLoading, isCallActive]);
 
-  // --- TYPING ANIMATION HANDLING ---
   useEffect(() => {
     let t: ReturnType<typeof setTimeout> | null = null;
     if (isLoading) {
-      t = setTimeout(() => setIsTyping(true), 260); // small delay to avoid flicker
+      t = setTimeout(() => setIsTyping(true), 260);
     } else {
       setIsTyping(false);
     }
-    return () => {
-      if (t) clearTimeout(t);
-    };
+    return () => { if (t) clearTimeout(t); };
   }, [isLoading]);
 
   useEffect(() => {
@@ -281,51 +259,141 @@ export default function ChatInterface() {
     if (last?.role === "assistant") setIsTyping(false);
   }, [messages]);
 
-  // --- FILE HANDLERS ---
-  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+  // ==========================================
+  // --- NEW IMAGE HANDLER LOGIC (COMPRESSION) ---
+  // ==========================================
+  
+  // Helper: Resize image to prevent large payloads
+  async function resizeAndToDataUrl(file: File, maxW = 1024, maxH = 1024): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = () => {
+        img.onload = () => {
+          let w = img.width, h = img.height;
+          const ratio = Math.min(1, Math.min(maxW / w, maxH / h));
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject("no-canvas-context");
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.78); // compressed jpeg
+          resolve(dataUrl);
+        };
+        img.onerror = () => reject("image-load-error");
+        img.src = reader.result as string;
+      };
+      reader.onerror = () => reject("file-read-error");
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+    try {
+      // Resize & compress
+      const smallDataUrl = await resizeAndToDataUrl(file, 1024, 1024);
+      setSelectedImage(smallDataUrl);
+    } catch (err) {
+      console.error("Image resize error, falling back:", err);
+      // Fallback to original if resize fails
       const reader = new FileReader();
       reader.onloadend = () => setSelectedImage(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
+
   const clearImage = () => {
     setSelectedImage(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // --- HANDLERS: form submit with mood ---
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  // --- NEW: direct POST to /api/chat for attachments ---
+  async function postMessageToApi(payload: any) {
+    setSending(true);
+    setIsTyping(true);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      // read response as text (works for streaming wrappers too)
+      const text = await res.text();
+
+      return { ok: res.ok, text };
+    } catch (err) {
+      console.error("postMessageToApi error:", err);
+      return { ok: false, text: "" };
+    } finally {
+      setSending(false);
+      setIsTyping(false);
+    }
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if ((!input.trim() && !selectedImage) || isLoading) return;
+    if ((!input.trim() && !selectedImage) || isLoading || sending) return;
 
     const mood = detectMoodFromText(input);
 
+    // If there's an image, we will:
+    // 1) append local user message (with attachment) so UI is instant
+    // 2) send direct POST to /api/chat with experimental_attachments (data URL)
+    // 3) append assistant response when server replies
     if (selectedImage) {
+      // 1) Append locally
       append({
         role: "user",
-        content: input,
+        content: input || "[Image]",
         experimental_mood: mood,
-        experimental_attachments: [{ name: "image.png", contentType: "image/png", url: selectedImage }],
+        experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: selectedImage }],
       } as any);
+
+      // build payload expected by your route.ts
+      const payload = {
+        messages: [
+          {
+            role: "user",
+            content: input || "[Image]",
+            experimental_mood: mood,
+            experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: selectedImage }],
+          },
+        ],
+      };
+
+      // Clear selected image in UI
       clearImage();
+
+      // 2) send to API
+      const { ok, text } = await postMessageToApi(payload);
+
+      // 3) append assistant message (response text)
+      if (ok && text) {
+        append({ role: "assistant", content: text } as any);
+      } else {
+        append({ role: "assistant", content: "Sorry, I couldn't process the image right now." } as any);
+      }
+
     } else {
+      // No image -> we can rely on useChat's append which triggers the library's flow
       append({ role: "user", content: input, experimental_mood: mood } as any);
-      handleSubmit(e);
+      // optional: if your useChat version requires handleSubmit, uncomment:
+      // await handleSubmit?.(e as any);
     }
+
+    // cleanup input
+    try { handleInputChange({ target: { value: "" } } as any); } catch (e) {}
   };
 
-  // --------------------------
-  // --- Simple Markdown-ish renderer
-  // --------------------------
+  // --- MARKDOWN RENDERER ---
   const escapeHtml = (unsafe: string) =>
-    unsafe
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+    unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 
   function renderMarkdownToHtml(raw: string) {
     if (!raw) return "";
@@ -345,56 +413,55 @@ export default function ChatInterface() {
     return <div className="prose prose-invert max-w-full" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
-  // --- TYPING BUBBLE component ---
+  // --- VISUALIZER COMPONENT ---
+  const AudioWaveform = () => (
+    <div className="flex items-center gap-1.5 h-16 absolute z-20 pointer-events-none">
+      {[...Array(5)].map((_, i) => (
+        <div
+          key={i}
+          className="w-2.5 bg-gradient-to-t from-purple-500 to-pink-500 rounded-full animate-wave shadow-[0_0_15px_rgba(168,85,247,0.6)]"
+          style={{
+            animationDelay: `${i * 0.15}s`,
+            animationDuration: '1s'
+          }}
+        />
+      ))}
+      <style jsx>{`
+        @keyframes wave {
+          0%, 100% { height: 20%; opacity: 0.7; }
+          50% { height: 100%; opacity: 1; }
+        }
+        .animate-wave {
+          animation: wave infinite ease-in-out;
+        }
+      `}</style>
+    </div>
+  );
+
   const TypingBubble = () => (
     <>
       <style jsx>{`
-        .amina-typing {
-          display: inline-flex;
-          gap: 6px;
-        }
+        .amina-typing { display: inline-flex; gap: 6px; }
         .amina-typing span {
-          width: 8px;
-          height: 8px;
-          border-radius: 9999px;
-          background: rgba(255, 255, 255, 0.85);
-          opacity: 0.35;
-          transform: translateY(0);
+          width: 8px; height: 8px; border-radius: 9999px;
+          background: rgba(255, 255, 255, 0.85); opacity: 0.35;
           animation: amina-blink 900ms infinite;
         }
-        .amina-typing span:nth-child(2) {
-          animation-delay: 120ms;
-        }
-        .amina-typing span:nth-child(3) {
-          animation-delay: 240ms;
-        }
+        .amina-typing span:nth-child(2) { animation-delay: 120ms; }
+        .amina-typing span:nth-child(3) { animation-delay: 240ms; }
         @keyframes amina-blink {
-          0% {
-            opacity: 0.25;
-            transform: translateY(0);
-          }
-          50% {
-            opacity: 1;
-            transform: translateY(-5px);
-          }
-          100% {
-            opacity: 0.25;
-            transform: translateY(0);
-          }
+          0% { opacity: 0.25; transform: translateY(0); }
+          50% { opacity: 1; transform: translateY(-5px); }
+          100% { opacity: 0.25; transform: translateY(0); }
         }
       `}</style>
-
       <div className="flex items-start gap-3 mb-3 animate-in">
         <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-purple-500">
           <img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" />
         </div>
         <div>
           <div className="bg-[#111827] text-gray-200 px-4 py-2 rounded-xl shadow-md max-w-xs">
-            <div className="amina-typing">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
+            <div className="amina-typing"><span></span><span></span><span></span></div>
           </div>
         </div>
       </div>
@@ -422,11 +489,7 @@ export default function ChatInterface() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={clearChat}
-            className="p-2 bg-red-600/20 text-red-400 rounded-full hover:bg-red-600/40"
-            title="Clear Memory"
-          >
+          <button onClick={clearChat} className="p-2 bg-red-600/20 text-red-400 rounded-full hover:bg-red-600/40" title="Clear Memory">
             <Trash2 size={20} />
           </button>
           <button
@@ -447,26 +510,22 @@ export default function ChatInterface() {
           <button
             onClick={() => {
               setIsCallActive(false);
-              // Stop audio and listening
-              if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current = null;
-              }
-              try {
-                recognitionRef?.stop?.();
-              } catch (_) {}
+              stopSpeaking();
+              try { recognitionRef?.stop?.(); } catch (_) {}
             }}
-            className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700"
+            className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700 z-50"
           >
             <X size={24} />
           </button>
 
           <div className="relative cursor-pointer" onClick={() => !isListening && startListening()}>
+            {/* Background Glow */}
             <div
               className={`absolute inset-0 ${voiceGender === "female" ? "bg-purple-600" : "bg-blue-600"
-                } rounded-full blur-3xl opacity-40 ${isListening ? "animate-pulse scale-125" : ""} transition-all duration-1000`}
+                } rounded-full blur-3xl opacity-40 ${isListening || isSpeaking ? "animate-pulse scale-125" : ""} transition-all duration-1000`}
             ></div>
 
+            {/* Avatar */}
             <div
               className={`w-48 h-48 rounded-full overflow-hidden border-4 ${voiceGender === "female" ? "border-purple-500" : "border-blue-500"
                 } relative z-10`}
@@ -474,11 +533,16 @@ export default function ChatInterface() {
               <img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" />
             </div>
 
-            {isListening && (
-              <div className="absolute bottom-2 right-2 bg-green-500 p-2 rounded-full border-2 border-black z-20 animate-bounce">
-                <Mic size={20} fill="white" />
-              </div>
-            )}
+            {/* Mic / Visualizer Overlay */}
+            <div className="absolute inset-0 flex items-center justify-center z-20">
+               {isSpeaking ? (
+                 <AudioWaveform /> 
+               ) : isListening ? (
+                 <div className="bg-green-500 p-3 rounded-full border-2 border-black animate-bounce shadow-lg">
+                   <Mic size={24} fill="white" />
+                 </div>
+               ) : null}
+            </div>
           </div>
 
           <h2 className="mt-10 text-3xl font-bold text-white">
@@ -488,6 +552,19 @@ export default function ChatInterface() {
             }`}>
             {statusText || "Tap Avatar to Start"}
           </p>
+
+          {/* STOP BUTTON */}
+          {isSpeaking && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                stopSpeaking();
+              }}
+              className="mt-6 px-6 py-2 bg-red-500/80 hover:bg-red-600 text-white rounded-full flex items-center gap-2 transition-all animate-in fade-in slide-in-from-bottom-4"
+            >
+              <Square size={16} fill="white" /> Stop Speaking
+            </button>
+          )}
 
           {/* Controls */}
           <div className="absolute bottom-12 flex items-center gap-3">
@@ -532,7 +609,17 @@ export default function ChatInterface() {
                 </div>
               ) : (
                 <div className="flex items-start gap-3 justify-end">
-                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-full max-w-xs">
+                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-full max-w-xs break-words">
+                    {/* Render Image Attachment if exists */}
+                    {m.experimental_attachments?.map((attachment: any, index: number) => (
+                      <div key={index} className="mb-2 rounded-lg overflow-hidden">
+                        <img 
+                          src={attachment.url} 
+                          alt="attachment" 
+                          className="w-full h-auto max-h-48 object-cover"
+                        />
+                      </div>
+                    ))}
                     <RenderContent text={m.content} />
                   </div>
                 </div>
@@ -541,9 +628,7 @@ export default function ChatInterface() {
           </div>
         ))}
 
-        {/* Typing animation */}
         {isTyping && <TypingBubble />}
-
         <div ref={messagesEndRef} />
       </main>
 
@@ -576,7 +661,7 @@ export default function ChatInterface() {
               <Mic size={20} />
             </button>
 
-            <button type="submit" disabled={isLoading || (!input.trim() && !selectedImage)} className="p-3 bg-purple-600 text-white rounded-full">
+            <button type="submit" disabled={isLoading || (!input.trim() && !selectedImage) || sending} className="p-3 bg-purple-600 text-white rounded-full">
               <Send size={18} />
             </button>
           </form>
