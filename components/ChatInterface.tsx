@@ -1,13 +1,19 @@
 "use client";
 
 import { useChat } from "ai/react";
-import { Send, Mic, Paperclip, Phone, X, Trash2, Square } from "lucide-react";
+import { Send, Mic, Paperclip, Phone, X, Trash2, Square, Briefcase, Heart } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
-import MessageBubble from "./MessageBubble";
 
 export default function ChatInterface() {
+  // --- STATE: ACCOUNTANT MODE ---
+  const [isAccountantMode, setIsAccountantMode] = useState(false);
+
+  // --- USE CHAT HOOK (Dynamic API) ---
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages } =
-    useChat();
+    useChat({
+      api: isAccountantMode ? '/api/accountant' : '/api/chat',
+    });
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
@@ -22,11 +28,13 @@ export default function ChatInterface() {
   const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // Local sending state for custom POST flow
-  const [sending, setSending] = useState(false);
-
   // Typing indicator
   const [isTyping, setIsTyping] = useState(false);
+
+  // --- THEME COLORS ---
+  const themeColor = isAccountantMode ? "blue" : "purple";
+  const themeGradient = isAccountantMode ? "from-blue-500 to-cyan-500" : "from-purple-500 to-pink-500";
+  const themeBorder = isAccountantMode ? "border-blue-500" : "border-purple-500";
 
   // --- PERMANENT MEMORY ---
   const MAX_STORE_MESSAGES = 30;
@@ -312,79 +320,28 @@ export default function ChatInterface() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // --- NEW: direct POST to /api/chat for attachments ---
-  async function postMessageToApi(payload: any) {
-    setSending(true);
-    setIsTyping(true);
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      // read response as text (works for streaming wrappers too)
-      const text = await res.text();
-
-      return { ok: res.ok, text };
-    } catch (err) {
-      console.error("postMessageToApi error:", err);
-      return { ok: false, text: "" };
-    } finally {
-      setSending(false);
-      setIsTyping(false);
-    }
-  }
-
+  // --- UPDATED SUBMIT LOGIC (Single Append Call) ---
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if ((!input.trim() && !selectedImage) || isLoading || sending) return;
+    if ((!input.trim() && !selectedImage) || isLoading) return;
 
     const mood = detectMoodFromText(input);
 
-    // If there's an image, we will:
-    // 1) append local user message (with attachment) so UI is instant
-    // 2) send direct POST to /api/chat with experimental_attachments (data URL)
-    // 3) append assistant response when server replies
     if (selectedImage) {
-      // 1) Append locally
-      append({
+      // 1) Append with Image (SDK handles API call automatically)
+      await append({
         role: "user",
         content: input || "[Image]",
         experimental_mood: mood,
         experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: selectedImage }],
       } as any);
 
-      // build payload expected by your route.ts
-      const payload = {
-        messages: [
-          {
-            role: "user",
-            content: input || "[Image]",
-            experimental_mood: mood,
-            experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: selectedImage }],
-          },
-        ],
-      };
-
       // Clear selected image in UI
       clearImage();
 
-      // 2) send to API
-      const { ok, text } = await postMessageToApi(payload);
-
-      // 3) append assistant message (response text)
-      if (ok && text) {
-        append({ role: "assistant", content: text } as any);
-      } else {
-        append({ role: "assistant", content: "Sorry, I couldn't process the image right now." } as any);
-      }
-
     } else {
-      // No image -> we can rely on useChat's append which triggers the library's flow
-      append({ role: "user", content: input, experimental_mood: mood } as any);
-      // optional: if your useChat version requires handleSubmit, uncomment:
-      // await handleSubmit?.(e as any);
+      // 2) Append text only
+      await append({ role: "user", content: input, experimental_mood: mood } as any);
     }
 
     // cleanup input
@@ -403,6 +360,7 @@ export default function ChatInterface() {
     out = out.replace(/^# (.*$)/gim, "<h1 class='text-xl font-bold'>$1</h1>");
     out = out.replace(/\*\*(.+?)\*\*/gim, "<strong>$1</strong>");
     out = out.replace(/\*(.+?)\*/gim, "<em>$1</em>");
+    out = out.replace(/```([\s\S]*?)```/g, "<pre class='bg-gray-800 p-2 rounded my-2 overflow-x-auto'><code>$1</code></pre>"); // Basic code block
     out = out.replace(/\n/g, "<br/>");
     return out;
   }
@@ -419,7 +377,7 @@ export default function ChatInterface() {
       {[...Array(5)].map((_, i) => (
         <div
           key={i}
-          className="w-2.5 bg-gradient-to-t from-purple-500 to-pink-500 rounded-full animate-wave shadow-[0_0_15px_rgba(168,85,247,0.6)]"
+          className={`w-2.5 bg-gradient-to-t ${themeGradient} rounded-full animate-wave shadow-[0_0_15px_rgba(168,85,247,0.6)]`}
           style={{
             animationDelay: `${i * 0.15}s`,
             animationDuration: '1s'
@@ -456,7 +414,7 @@ export default function ChatInterface() {
         }
       `}</style>
       <div className="flex items-start gap-3 mb-3 animate-in">
-        <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-purple-500">
+        <div className={`w-9 h-9 rounded-full overflow-hidden border-2 ${themeBorder}`}>
           <img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" />
         </div>
         <div>
@@ -476,19 +434,44 @@ export default function ChatInterface() {
       {/* HEADER */}
       <header className="h-16 border-b border-white/10 flex items-center px-4 justify-between bg-black/80 fixed w-full top-0 z-50 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-purple-500">
+          <div className={`w-10 h-10 rounded-full overflow-hidden border-2 ${themeBorder} transition-colors duration-500`}>
             <img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" />
           </div>
           <div>
-            <h1 className="font-bold text-lg text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
-              AMINA AI
+            <h1 className={`font-bold text-lg text-transparent bg-clip-text bg-gradient-to-r ${themeGradient} transition-all duration-500`}>
+              {isAccountantMode ? "AMINA CPA" : "AMINA AI"}
             </h1>
             <p className="text-[10px] text-green-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>Online
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+              {isAccountantMode ? "Work Mode" : "Online"}
             </p>
           </div>
         </div>
+
+        {/* CENTER TOGGLE BUTTON */}
+        <button 
+          onClick={() => setIsAccountantMode(!isAccountantMode)}
+          className={`hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold border transition-all duration-300 ${
+            isAccountantMode 
+            ? "bg-blue-600/20 border-blue-500 text-blue-300 hover:bg-blue-600/30" 
+            : "bg-pink-600/20 border-pink-500 text-pink-300 hover:bg-pink-600/30"
+          }`}
+        >
+           {isAccountantMode ? <Briefcase size={16}/> : <Heart size={16}/>}
+           {isAccountantMode ? "Accountant Mode" : "Bestie Mode"}
+        </button>
+
         <div className="flex gap-2">
+          {/* Mobile Toggle Button (Icon Only) */}
+          <button 
+            onClick={() => setIsAccountantMode(!isAccountantMode)}
+            className={`md:hidden p-2 rounded-full transition-all ${
+                isAccountantMode ? "bg-blue-600/20 text-blue-300" : "bg-pink-600/20 text-pink-300"
+            }`}
+          >
+             {isAccountantMode ? <Briefcase size={20}/> : <Heart size={20}/>}
+          </button>
+
           <button onClick={clearChat} className="p-2 bg-red-600/20 text-red-400 rounded-full hover:bg-red-600/40" title="Clear Memory">
             <Trash2 size={20} />
           </button>
@@ -521,14 +504,14 @@ export default function ChatInterface() {
           <div className="relative cursor-pointer" onClick={() => !isListening && startListening()}>
             {/* Background Glow */}
             <div
-              className={`absolute inset-0 ${voiceGender === "female" ? "bg-purple-600" : "bg-blue-600"
-                } rounded-full blur-3xl opacity-40 ${isListening || isSpeaking ? "animate-pulse scale-125" : ""} transition-all duration-1000`}
+              className={`absolute inset-0 ${voiceGender === "female" ? (isAccountantMode ? "bg-blue-600" : "bg-purple-600") : "bg-green-600"
+              } rounded-full blur-3xl opacity-40 ${isListening || isSpeaking ? "animate-pulse scale-125" : ""} transition-all duration-1000`}
             ></div>
 
             {/* Avatar */}
             <div
-              className={`w-48 h-48 rounded-full overflow-hidden border-4 ${voiceGender === "female" ? "border-purple-500" : "border-blue-500"
-                } relative z-10`}
+              className={`w-48 h-48 rounded-full overflow-hidden border-4 ${isAccountantMode ? "border-blue-500" : "border-purple-500"
+              } relative z-10 transition-colors duration-500`}
             >
               <img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" />
             </div>
@@ -546,7 +529,7 @@ export default function ChatInterface() {
           </div>
 
           <h2 className="mt-10 text-3xl font-bold text-white">
-            {voiceGender === "female" ? "Amina" : "Mohammad"}
+            {voiceGender === "female" ? (isAccountantMode ? "Amina (CPA)" : "Amina") : "Mohammad"}
           </h2>
           <p className={`text-lg mt-2 font-medium animate-pulse ${statusText === "Listening..." ? "text-green-400" : "text-purple-300"
             }`}>
@@ -582,16 +565,20 @@ export default function ChatInterface() {
       <main className="flex-1 overflow-y-auto pt-20 pb-24 px-4 md:px-20 lg:px-64 scroll-smooth">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center animate-in fade-in duration-700">
-            <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-purple-500 mb-6 shadow-[0_0_30px_rgba(168,85,247,0.3)]">
+            <div className={`w-32 h-32 rounded-full overflow-hidden border-4 ${themeBorder} mb-6 shadow-[0_0_30px_rgba(168,85,247,0.3)]`}>
               <img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" />
             </div>
             <h2
-              className="text-3xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-purple-400 mb-4 drop-shadow-sm"
+              className={`text-3xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r ${themeGradient} mb-4 drop-shadow-sm`}
               style={{ fontFamily: "sans-serif" }}
             >
-              أهلاً بكِ يا دعاء ❤️
+              {isAccountantMode ? "Work Mode On 📊" : "أهلاً بكِ يا دعاء ❤️"}
             </h2>
-            <p className="text-lg text-gray-300">أنا أمينة، كيف حالك اليوم؟</p>
+            <p className="text-lg text-gray-300">
+                {isAccountantMode 
+                 ? "Ready to crunch numbers. Send me a bill or ask for formulas." 
+                 : "أنا أمينة، كيف حالك اليوم؟"}
+            </p>
           </div>
         )}
 
@@ -600,7 +587,7 @@ export default function ChatInterface() {
             <div className="mb-3">
               {m.role === "assistant" ? (
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-purple-500">
+                  <div className={`w-9 h-9 rounded-full overflow-hidden border-2 ${themeBorder}`}>
                     <img src="/Amina_logo.png" alt="Amina" className="w-full h-full object-cover" />
                   </div>
                   <div className="bg-[#111827] text-gray-200 px-4 py-3 rounded-xl shadow-md max-w-3xl">
@@ -609,7 +596,7 @@ export default function ChatInterface() {
                 </div>
               ) : (
                 <div className="flex items-start gap-3 justify-end">
-                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-full max-w-xs break-words">
+                  <div className={`bg-gradient-to-r ${themeGradient} text-white px-4 py-2 rounded-full max-w-xs break-words`}>
                     {/* Render Image Attachment if exists */}
                     {m.experimental_attachments?.map((attachment: any, index: number) => (
                       <div key={index} className="mb-2 rounded-lg overflow-hidden">
@@ -637,7 +624,7 @@ export default function ChatInterface() {
         <div className="max-w-3xl mx-auto">
           {selectedImage && (
             <div className="mb-2 relative w-fit animate-in slide-in-from-bottom-2">
-              <img src={selectedImage} alt="Selected" className="w-20 h-20 object-cover rounded-lg border border-purple-500" />
+              <img src={selectedImage} alt="Selected" className={`w-20 h-20 object-cover rounded-lg border ${themeBorder}`} />
               <button onClick={clearImage} className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1">
                 <X size={12} fill="white" />
               </button>
@@ -646,7 +633,7 @@ export default function ChatInterface() {
 
           <form onSubmit={handleFormSubmit} className="relative flex items-center gap-2 bg-[#1a1a1a] border border-white/10 p-2 pl-4 rounded-full shadow-2xl">
             <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="text-gray-400 hover:text-purple-400">
+            <button type="button" onClick={() => fileInputRef.current?.click()} className={`text-gray-400 hover:text-${themeColor}-400`}>
               <Paperclip size={20} />
             </button>
 
@@ -654,14 +641,14 @@ export default function ChatInterface() {
               className="flex-1 bg-transparent border-none outline-none text-white"
               value={input}
               onChange={handleInputChange}
-              placeholder="Message Amina..."
+              placeholder={isAccountantMode ? "Ask about Excel or upload invoice..." : "Message Amina..."}
             />
 
             <button type="button" onClick={() => { if (!isListening) startListening(); }} className="p-2 text-gray-400 hover:text-white">
               <Mic size={20} />
             </button>
 
-            <button type="submit" disabled={isLoading || (!input.trim() && !selectedImage) || sending} className="p-3 bg-purple-600 text-white rounded-full">
+            <button type="submit" disabled={isLoading || (!input.trim() && !selectedImage)} className={`p-3 bg-${themeColor}-600 text-white rounded-full`}>
               <Send size={18} />
             </button>
           </form>
