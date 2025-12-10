@@ -1,9 +1,9 @@
 // app/api/accountant/route.ts
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { GoogleGenerativeAIStream, StreamingTextResponse } from "ai";
+import { NextResponse } from "next/server";
 
 export const runtime = "edge";
 
+/* ------------------ Helpers (same as yours) ------------------ */
 function safeTrim(s: any, max = 4000) {
   if (!s || typeof s !== "string") return "";
   const t = s.trim();
@@ -15,8 +15,10 @@ async function urlToBase64(u: string) {
     const res = await fetch(u);
     if (!res.ok) throw new Error("Failed fetching image: " + res.status);
     const buffer = await res.arrayBuffer();
+
     // @ts-ignore
     if (typeof Buffer !== "undefined") return Buffer.from(buffer).toString("base64");
+
     let binary = "";
     const bytes = new Uint8Array(buffer);
     const chunkSize = 0x8000;
@@ -31,18 +33,8 @@ async function urlToBase64(u: string) {
   }
 }
 
-export async function POST(req: Request) {
-  try {
-    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    if (!apiKey) return new Response("Missing API Key", { status: 500 });
-
-    const url = new URL(req.url);
-    const debug = url.searchParams.get("debug") === "true";
-
-    const body = await req.json().catch(() => ({}));
-
-    // ---- STRONG ACCOUNTANT SYSTEM PROMPT (also included as first "system" content) ----
-    const ACCOUNTANT_PROMPT = `
+/* ------------------ ✅ STRONG ACCOUNTANT SYSTEM PROMPT (UNCHANGED) ------------------ */
+const ACCOUNTANT_PROMPT = `
 You are "Amina CPA", a professional Accountant & Excel Expert Assistant.
 
 RULES (MUST FOLLOW EXACTLY):
@@ -76,30 +68,113 @@ RULES (MUST FOLLOW EXACTLY):
 7) Temperature 0.1 - deterministic output.
 
 Return strictly parsable JSON following exactly the schema above.
-    `.trim();
+`.trim();
 
+/* ------------------ ✅ OpenRouter Key Rotation ------------------ */
+const OPENROUTER_KEYS = (process.env.OPENROUTER_KEYS || "")
+  .split(",")
+  .map(k => k.trim())
+  .filter(Boolean);
+
+let OR_KEY_INDEX = 0;
+function getNextOpenRouterKey() {
+  if (!OPENROUTER_KEYS.length) return null;
+  const k = OPENROUTER_KEYS[OR_KEY_INDEX % OPENROUTER_KEYS.length];
+  OR_KEY_INDEX++;
+  return k;
+}
+
+/* ------------------ ✅ OpenRouter Call ------------------ */
+async function callOpenRouter(messages: { role: string; content: string }[]) {
+  const key = getNextOpenRouterKey();
+  if (!key) throw new Error("No OpenRouter key configured");
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "mistralai/mistral-7b-instruct",
+      messages,
+      temperature: 0.1,
+      max_tokens: 2000,
+    }),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`OpenRouter failed ${res.status}: ${txt}`);
+  }
+
+  const data = await res.json();
+  return data?.choices?.[0]?.message?.content || "";
+}
+
+/* ------------------ ✅ HuggingFace Fallback ------------------ */
+async function callHuggingFace(prompt: string) {
+  const hfKey = process.env.HUGGINGFACE_API_KEY;
+  if (!hfKey) throw new Error("No HuggingFace key");
+
+  const res = await fetch(
+    "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${hfKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: { max_new_tokens: 2000, temperature: 0.1 },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`HF failed ${res.status}: ${t}`);
+  }
+
+  const data = await res.json();
+  if (Array.isArray(data) && data[0]?.generated_text) return data[0].generated_text;
+  if (data?.generated_text) return data.generated_text;
+  return JSON.stringify(data).slice(0, 4000);
+}
+
+/* ------------------ ✅ MAIN POST HANDLER ------------------ */
+export async function POST(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const debug = url.searchParams.get("debug") === "true";
+
+    const body = await req.json().catch(() => ({}));
     const messages = Array.isArray(body.messages) ? body.messages : [];
+
     const lastMessage = messages.length ? messages[messages.length - 1] : { content: "" };
     const historyMessages = messages.length > 1 ? messages.slice(0, -1) : [];
 
-    const genAI = new GoogleGenerativeAI(apiKey);
+    /* ---------- Build chat messages ---------- */
+    const chatMessages: { role: string; content: string }[] = [];
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      // keep systemInstruction too (belt-and-suspenders)
-      systemInstruction: ACCOUNTANT_PROMPT,
+    // SYSTEM role (first always)
+    chatMessages.push({
+      role: "system",
+      content: ACCOUNTANT_PROMPT,
     });
 
-    // Build contents and ensure first message is system role
-    const contents: any[] = [];
-    contents.push({ role: "system", parts: [{ text: ACCOUNTANT_PROMPT }] });
-
     for (const msg of historyMessages) {
-      const role = msg.role === "user" ? "user" : msg.role === "assistant" ? "assistant" : "user";
-      if (msg.content) contents.push({ role, parts: [{ text: safeTrim(msg.content) }] });
+      const role = msg.role === "assistant" ? "assistant" : "user";
+      if (msg.content) {
+        chatMessages.push({
+          role,
+          content: safeTrim(msg.content),
+        });
+      }
     }
 
-    // Current Message & image handling
+    // Current message + image handling
     const userText = safeTrim(lastMessage.content, 4000);
     const hasAttachment =
       Array.isArray(lastMessage.experimental_attachments) &&
@@ -108,67 +183,67 @@ Return strictly parsable JSON following exactly the schema above.
     if (hasAttachment) {
       const att = lastMessage.experimental_attachments[0];
       let base64: string | null = null;
-      let mimeType = "image/png";
 
-      if (att?.url) {
-        if (typeof att.url === "string" && att.url.startsWith("data:")) {
-          const comma = att.url.indexOf(",");
-          mimeType = att.url.slice(5, comma).split(";")[0] ?? "image/png";
-          base64 = att.url.slice(comma + 1);
-        } else if (typeof att.url === "string") {
+      if (att?.url && typeof att.url === "string") {
+        if (att.url.startsWith("data:")) {
+          base64 = att.url.split(",")[1];
+        } else {
           base64 = await urlToBase64(att.url);
         }
       }
 
       if (base64) {
-        contents.push({
+        chatMessages.push({
           role: "user",
-          parts: [
-            { text: userText ? userText : "Analyze this document for accounting data and return JSON only." },
-            { inlineData: { data: base64, mimeType } },
-          ],
+          content:
+            (userText || "Analyze this document for accounting data and return JSON only.") +
+            "\n[Image attached]",
         });
       } else {
-        // attachment present but failed -> push text and ask the model to instruct user
-        contents.push({
+        chatMessages.push({
           role: "user",
-          parts: [{ text: userText + " (attachment present but could not fetch the image)." }],
+          content: userText + " (attachment present but could not be fetched)",
         });
       }
     } else {
-      // no attachment - send the user text (could be CSV or question)
-      contents.push({ role: "user", parts: [{ text: userText || "" }] });
+      chatMessages.push({
+        role: "user",
+        content: userText || "",
+      });
     }
 
-    // DEBUG: log contents sent to model
-    console.log("ACCOUNTANT -> contents:", JSON.stringify(contents, null, 2));
+    if (debug) {
+      return NextResponse.json({ debugMessages: chatMessages });
+    }
 
-    // If debug param set, use non-streaming call to inspect raw output
-    if (debug && typeof (model as any).generateText === "function") {
+    /* ---------- ✅ Try OpenRouter first ---------- */
+    try {
+      const reply = await callOpenRouter(chatMessages);
+      return NextResponse.json(reply, { status: 200 });
+    } catch (orErr) {
+      console.warn("Accountant OR failed, falling back to HF:", orErr);
+
+      const hfPrompt = chatMessages
+        .map(m => `${m.role.toUpperCase()}: ${m.content}`)
+        .join("\n\n");
+
       try {
-        const resp = await (model as any).generateText({
-          contents,
-          generationConfig: { temperature: 0.1, maxOutputTokens: 2000 },
-        });
+        const hfReply = await callHuggingFace(hfPrompt);
+        return NextResponse.json(hfReply, { status: 200 });
+      } catch (hfErr) {
+        console.error("Accountant HF failed:", hfErr);
 
-        // Depending on SDK shape - attempt to extract text:
-        const raw = JSON.stringify(resp, null, 2);
-        console.log("DEBUG raw model response:", raw);
-        // return raw for inspection
-        return new Response(raw, { status: 200, headers: { "Content-Type": "application/json" } });
-      } catch (e) {
-        console.error("Debug generateText error:", e);
+        return NextResponse.json(
+          {
+            rows: [],
+            summary: { rowCount: 0, grandTotal: 0, totalTax: 0 },
+            issues: [{ row: 0, message: "AI service unavailable" }],
+          },
+          { status: 200 }
+        );
       }
     }
-
-    // Production: streaming response
-    const responseStream = await (model as any).generateContentStream({
-      contents,
-      generationConfig: { temperature: 0.1, maxOutputTokens: 2000 },
-    });
-
-    return new StreamingTextResponse(GoogleGenerativeAIStream(responseStream));
-  } catch (err: any) {
+  } catch (err) {
     console.error("ACCOUNTANT route error:", err);
     return new Response("Error", { status: 500 });
   }
