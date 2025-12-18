@@ -9,31 +9,30 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.44",
-    "@ai-sdk/openai": "^0.0.14",
+    "@ai-sdk/google": "^0.0.55",
     "@google/generative-ai": "^0.24.1",
-    "ai": "^2.2.37",
-    "autoprefixer": "^10.4.22",
-    "bufferutil": "^4.0.9",
+    "ai": "^3.4.33",
+    "cheerio": "^1.1.2",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
-    "edge-tts": "^1.0.1",
-    "framer-motion": "^11.2.0",
-    "lucide-react": "^0.378.0",
-    "msedge-tts": "^2.0.2",
+    "google-tts-api": "^2.0.2",
+    "lucide-react": "^0.460.0",
     "next": "14.2.3",
-    "openai": "^4.104.0",
     "react": "^18",
     "react-dom": "^18",
-    "react-markdown": "^9.0.1",
     "tailwind-merge": "^2.3.0",
-    "utf-8-validate": "^6.0.5"
+    "ws": "^8.18.3",
+    "yt-search": "^2.13.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "postcss": "^8",
+    "autoprefixer": "^10.4.23",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.3",
+    "postcss": "^8.5.6",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }

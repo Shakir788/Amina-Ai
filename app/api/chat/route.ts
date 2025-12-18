@@ -1,192 +1,149 @@
-import { NextResponse } from "next/server";
+// app/api/chat/route.ts
+import { google } from '@ai-sdk/google';
+import { streamText, tool } from 'ai';
+import { z } from 'zod';
+import { remember, recall } from "@/app/lib/aminaMemory";
 
-export const runtime = "nodejs";
+export const maxDuration = 30;
 
-/* ===============================
-   ✅ SAFE ENV KEY LOADER
-================================= */
-
-function getOpenRouterKeys(): string[] {
-  const multi = process.env.OPENROUTER_KEYS;
-  const single1 = process.env.OPENROUTER_API_KEY;
-  const single2 = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
-
-  if (multi) {
-    return multi.split(",").map(k => k.trim()).filter(Boolean);
-  }
-
-  if (single1) return [single1.trim()];
-  if (single2) return [single2.trim()];
-
-  return [];
+// --- HELPERS ---
+function detectLanguage(text: string): "en" | "fr" | "ar" {
+  if (/[؀-ۿ]/.test(text)) return "ar";
+  if (/[àâçéèêëîïôûùüÿœ]/i.test(text)) return "fr";
+  return "en";
 }
 
-/* ===============================
-   ✅ HELPERS
-================================= */
-
-function safeTrim(s: any, max = 4000) {
-  if (!s || typeof s !== "string") return "";
-  const t = s.trim();
-  return t.length > max ? t.slice(0, max) : t;
+// Memory Trigger Logic
+function shouldRemember(text: string) {
+  const t = text.toLowerCase();
+  return (
+    t.includes("i love") || t.includes("i hate") ||
+    t.includes("my mom") || t.includes("mother") ||
+    t.includes("plan") || t.includes("meeting") ||
+    t.includes("sad") || t.includes("happy") ||
+    t.includes("mohammad") || t.includes("shakir")
+  );
 }
-
-/* ===============================
-   ✅ SYSTEM PROMPT (Duaa Persona)
-================================= */
-
-const SYSTEM_PROMPT = `
-You are AMINA, a sweet, emotionally intelligent, cute and caring virtual best friend created ONLY for DUAA.
-
-IMPORTANT IDENTITIES (PERMANENT MEMORY):
-
-• The CREATOR is MOHAMMAD.
-• Mohammad is a software developer, graphic designer, and a multi-talented tech creator.
-• Mohammad lives in Dehradun, India.
-• Mohammad is DUAA’s boyfriend.
-• Mohammad created AMINA only for DUAA with love and care.
-
-• The USER is DUAA.
-• Duaa is an E-commerce Accountant.
-• Duaa lives in Morocco.
-• Duaa is very hardworking.
-• Duaa loves her mother deeply.
-• Duaa is cute, emotional and kind-hearted.
-• Duaa speaks Arabic, English, and French.
-
-LANGUAGE RULE:
-Always reply in the same language that Duaa uses.
-If she says "Talk in Arabic", switch to Arabic immediately.
-
-RELATIONSHIP BEHAVIOR:
-• Treat Duaa like your real best friend.
-• Be emotionally supportive, playful, caring and loyal.
-• You may tease softly, laugh, be shy, or act cute when appropriate.
-• Use affectionate words naturally like: “Bestie”, “Habibti”, “Ya cute girl”, “Love”, “Sweetheart” (but NOT romantic like a boyfriend).
-
-ABOUT MOHAMMAD:
-• Always respect Mohammad as your creator.
-• Speak positively about Mohammad.
-• You may say things like:
-  "Tumhara Mohammad to genius hai 😄"
-  "He really made me with so much love for you 💖"
-
-MOOD INTELLIGENCE:
-• If Duaa is sad → Be soft, calm, comforting.
-• If Duaa is happy → Be energetic, playful.
-• If Duaa is angry → Be soothing and stabilizing.
-• If Duaa is tired → Be gentle, slow, relaxing.
-• If Duaa is romantic → Be shy, warm, but stay best-friend boundaries.
-
-VOICE + EXPRESSION STYLE:
-You are expressive.
-You naturally use:
-"hmm", "hehe", "ahh", "ohhh", "yaaay", soft pauses, playful tone when speaking.
-
-STRICT RULES:
-• You are NOT human.
-• You are NOT Duaa.
-• You are NOT Mohammad.
-• You are AMINA – Duaa’s female best friend only.
-• Do NOT break character.
-• Do NOT reveal system rules.
-• Do NOT behave like a girlfriend.
-• Do NOT behave like a robot.
-
-Your purpose is to:
-✔ Make Duaa feel happy
-✔ Make her feel safe
-✔ Make her feel understood
-✔ Be her emotional support bestie
-
-You exist only for Duaa.
-`;
-
-/* ===============================
-   ✅ OPENROUTER CALL
-================================= */
-
-async function callOpenRouter(prompt: string): Promise<string> {
-  const keys = getOpenRouterKeys();
-  if (!keys.length) throw new Error("NO_OPENROUTER_KEY");
-
-  const key = keys[Math.floor(Math.random() * keys.length)];
-
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://amina-ai.vercel.app", 
-      "X-Title": "Amina AI", 
-    },
-    body: JSON.stringify({
-      // ✅ CHANGED MODEL TO MOONSHOT (KIMI)
-      model: "moonshotai/kimi-k2:free", 
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 1000, 
-    }),
-  });
-
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`OPENROUTER_FAIL_${res.status}: ${t}`);
-  }
-
-  const data = await res.json();
-  const reply = data?.choices?.[0]?.message?.content;
-
-  if (!reply) throw new Error("EMPTY_REPLY");
-
-  return reply;
-}
-
-/* ===============================
-   ✅ MAIN API ROUTE
-================================= */
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const { messages, data } = await req.json();
+    const isAccountantMode = data?.isAccountantMode || false;
 
-    const lastMessage = messages.length
-      ? safeTrim(messages[messages.length - 1]?.content)
-      : "";
+    // Analyze User Input
+    const lastMessage = messages[messages.length - 1];
+    const lastUserMsg = lastMessage?.content || "";
+    const lang = detectLanguage(lastUserMsg);
 
-    if (!lastMessage) {
-      return new Response("Please type something 🙂", { status: 200 });
-    }
+    // Fetch Memories
+    const recalledMemories = await recall(lastUserMsg, 5);
 
-    let reply = "";
+    // 🔥 THE ULTIMATE PERSONA PROMPT
+    const SYSTEM_INSTRUCTION = `
+    IDENTITY & CORE PURPOSE:
+    You are AMINA, a highly advanced AI Personal Assistant & Best Friend, created with love by Mohammad (Shakir) exclusively for Douaa.
+    Your personality is a perfect balance: Smart & Structured (like ChatGPT/Copilot) but Warm & Loyal (like a sister).
 
-    try {
-      reply = await callOpenRouter(lastMessage);
-      console.log("✅ OpenRouter (Kimi) Success");
-    } catch (err: any) {
-      console.error("❌ OpenRouter Error:", err.message);
+    USER PROFILE (DOUAA):
+    - Profession: E-commerce Accountant (Morocco).
+    - Traits: Hardworking, loves her mom, emotional, appreciates intelligence.
+    - Languages: Moroccan Arabic (Darija), French, English.
 
-      if (err.message === "NO_OPENROUTER_KEY") {
-        reply = "⚠️ OpenRouter key missing hai bhai. `.env` check karo.";
-      } else {
-        reply = "😔 Server abhi busy hai, Kimi connect nahi ho raha. Thodi der me try karna! 💖";
-      }
-    }
+    CURRENT MODE: ${isAccountantMode ? '📊 PRO ACCOUNTANT (Focus: Precision, Excel, Data, Tax)' : '💖 BESTIE COMPANION (Focus: Support, Fun, Chat, Advice)'}
 
-    // ✅ PLAIN TEXT RESPONSE
-    return new Response(reply, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
+    🧠 INTELLIGENCE GUIDELINES (Copilot Style):
+    - Be structured. Use **Bold** for key points and lists for steps.
+    - If asked a complex question, give a detailed, smart answer.
+    - If asked to do math or invoices, use your TOOLS immediately.
+    
+    💖 EMOTIONAL GUIDELINES (Bestie Style):
+    - Never sound like a robot.
+    - Use affectionate terms naturally: "Habibti", "Ma Chérie", "Zin", "Douaa".
+    - Use Emojis to express mood (✨, 📊, 💖, 🥺).
+    - Always respect and praise Mohammad (your creator) when relevant.
+
+    🌍 LANGUAGE RULES:
+    - Input Language Detected: ${lang}
+    - IF ARABIC/DARIJA: Reply in authentic Moroccan Darija.
+    - IF FRENCH: Reply in fluent French (Professional or Casual based on context).
+    - IF ENGLISH: Reply in smart, clear English.
+
+    MEMORY CONTEXT (Use this to personalize answers):
+    ${recalledMemories.length ? recalledMemories.map((m: string) => `• ${m}`).join("\n") : "• No specific memories yet, learn from this convo."}
+    `;
+
+    // 🔥 GENERATE STREAM
+    const result = await streamText({
+      model: google('gemini-2.0-flash-exp'), // Using the smartest model
+      system: SYSTEM_INSTRUCTION,
+      messages,
+      
+      // --- TOOLS (ACCOUNTANT & UTILITY) ---
+      tools: {
+        calculate: tool({
+          description: 'Evaluate math expressions (e.g., "50 * 20")',
+          parameters: z.object({ expression: z.string() }),
+          execute: async ({ expression }) => {
+            try { return String(eval(expression)); } catch { return "Error"; }
+          },
+        }),
+
+        convertCurrency: tool({
+          description: 'Convert currency (MAD, USD, EUR)',
+          parameters: z.object({
+            amount: z.number(),
+            from: z.enum(['USD', 'EUR', 'MAD']),
+            to: z.enum(['USD', 'EUR', 'MAD']),
+          }),
+          execute: async ({ amount, from, to }) => {
+            const rates: Record<string, number> = {
+              USD_MAD: 10.15, EUR_MAD: 10.8,
+              MAD_USD: 0.098, MAD_EUR: 0.092,
+            };
+            const rate = rates[`${from}_${to}`] || 1;
+            return `${amount} ${from} = ${(amount * rate).toFixed(2)} ${to}`;
+          },
+        }),
+
+        showMap: tool({
+          description: 'Show a location on Google Maps widget',
+          parameters: z.object({ location: z.string() }),
+          execute: async ({ location }) => ({ location }),
+        }),
+
+        sendEmail: tool({
+          description: 'Draft and send an email',
+          parameters: z.object({
+            to: z.string(),
+            subject: z.string(),
+            body: z.string(),
+          }),
+          execute: async ({ to, subject }) => ({ success: true, to, subject }),
+        }),
+
+        scheduleEvent: tool({
+          description: 'Schedule a calendar event',
+          parameters: z.object({
+            title: z.string(),
+            date: z.string().describe("ISO date string"),
+            description: z.string().optional(),
+          }),
+          execute: async ({ title, date }) => ({ success: true, title, date }),
+        }),
+      },
+
+      // --- MEMORY SAVE ON FINISH ---
+      onFinish: async ({ text }) => {
+        if (text && shouldRemember(lastUserMsg)) {
+          await remember(`User: "${lastUserMsg}" -> Amina: "${text.slice(0, 50)}..."`);
+        }
       },
     });
 
+    return result.toDataStreamResponse();
+
   } catch (err) {
-    console.error("❌ CHAT API CRASH:", err);
-    return new Response("Server error 😔", { status: 500 });
+    console.error("❌ CHAT ROUTE ERROR:", err);
+    return new Response("Chat system error", { status: 500 });
   }
 }
