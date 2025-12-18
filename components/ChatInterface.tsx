@@ -7,9 +7,11 @@ import {
   Mail, CheckCircle, Zap, Calendar
 } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
+// ✅ Animation Library (Ensure you ran: npm install framer-motion)
+import { motion, AnimatePresence } from "framer-motion"; 
 
 // ==========================================
-// 🧾 INVOICE TABLE & TOOLS (Keep your UI)
+// 🧾 INVOICE TABLE (YOUR UI)
 // ==========================================
 const InvoiceTable = ({ data }: { data: any }) => {
   if (!data?.rows) return null;
@@ -71,7 +73,7 @@ export default function ChatInterface() {
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const lastSpokenId = useRef<string | null>(null); // Prevents Double Voice
+  const lastSpokenId = useRef<string | null>(null);
 
   // --- THEME ---
   const theme = isAccountantMode 
@@ -81,7 +83,7 @@ export default function ChatInterface() {
   // --- CHAT HOOK ---
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages, setInput } = useChat({
     api: "/api/chat",
-    body: { mode: isAccountantMode ? "accountant" : "bestie" },
+    body: { data: { isAccountantMode } },
     onError: (err) => console.error("Chat Error:", err),
   });
 
@@ -100,7 +102,7 @@ export default function ChatInterface() {
   useEffect(() => {
     if (messages.length === 0) return;
     const toStore = messages.slice(-MAX_STORE_MESSAGES).map((m: any) => ({ 
-        id: m.id, role: m.role, content: (m.content || "").slice(0, 1000) 
+        id: m.id, role: m.role, content: (m.content || "").slice(0, 1000), toolInvocations: m.toolInvocations 
     }));
     const id = setTimeout(() => {
       try { localStorage.setItem("amina_memory_v1", JSON.stringify(toStore)); } catch (e) {}
@@ -119,7 +121,7 @@ export default function ChatInterface() {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   // ==========================================
-  // --- AUDIO LOGIC (SIMPLE & STABLE) ---
+  // --- AUDIO LOGIC ---
   // ==========================================
   
   const stopSpeaking = () => {
@@ -129,8 +131,6 @@ export default function ChatInterface() {
       audioRef.current = null;
     }
     setIsSpeaking(false);
-    
-    // If call is active, go back to listening
     if (isCallActive) {
         setStatusText("Listening...");
         setFaceExpression("listening");
@@ -142,19 +142,11 @@ export default function ChatInterface() {
   };
 
   const speak = async (rawText: string, messageId: string) => {
-    // Prevent double speaking
     if (lastSpokenId.current === messageId) return;
     lastSpokenId.current = messageId;
 
-    // Stop listening while speaking
-    setIsListening(false);
-    if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){}
-
-    // Stop previous audio
-    if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-    }
+    if (isListening) { setIsListening(false); try { recognitionRef.current?.stop(); } catch(e){} }
+    if (audioRef.current) { audioRef.current.pause(); }
 
     const cleanText = rawText.replace(/[\u{1F600}-\u{1F64F}]/gu, "").replace(/[*#_`~-]/g, "").trim();
     if (!cleanText) return;
@@ -180,7 +172,6 @@ export default function ChatInterface() {
       audio.onended = () => {
         setIsSpeaking(false);
         URL.revokeObjectURL(url);
-        // Loop back to listening if call is active
         if (isCallActive) {
             setStatusText("Listening...");
             setFaceExpression("listening");
@@ -197,15 +188,12 @@ export default function ChatInterface() {
       console.error("Speak Error:", e);
       setIsSpeaking(false);
       setFaceExpression("idle");
-      // Fallback
       if(isCallActive) startListening();
     }
   };
 
-  // --- AUTO SPEAK TRIGGER ---
   useEffect(() => {
     const last = messages[messages.length - 1];
-    // Rule: Call Active + AI Message + Not Loading + Not Spoken Yet
     if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) {
       speak(last.content, last.id);
     }
@@ -221,9 +209,9 @@ export default function ChatInterface() {
 
     const recognition = new SR();
     recognitionRef.current = recognition;
-    recognition.continuous = false; // Simple mode: Listen -> Stop -> Send
+    recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = "en-US"; // Or auto detect if needed
+    recognition.lang = "en-US";
 
     recognition.onstart = () => {
       setIsListening(true);
@@ -263,7 +251,6 @@ export default function ChatInterface() {
     }
   }, [isLoading, isSpeaking, isCallActive]);
 
-  // Blink logic
   useEffect(() => {
     const interval = setInterval(() => {
       if (faceExpression === "idle") {
@@ -317,46 +304,95 @@ export default function ChatInterface() {
   // --- RENDERERS ---
   const RenderContent = ({ text }: { text?: string }) => {
     if (!text) return null;
-    // Basic Markdown
-    const html = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br/>");
-    
-    // Check for JSON Invoice Data
     try {
       if (text.trim().startsWith('{') && text.includes('"rows":')) {
         const data = JSON.parse(text);
         if (data.rows && data.summary) return <InvoiceTable data={data} />;
       }
     } catch (e) {}
-    
+    const html = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br/>");
     return <div className="prose prose-invert max-w-full text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
-  // Keep your Tool Renderer logic if used
+  // 🔥 TOOL RENDERER (YOUR UI + FIXED LOGIC)
   const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
     const { toolName, args, result } = toolInvocation;
+    
     if (toolName === 'playYoutube') {
-        const videoSrc = args.videoId ? `https://www.youtube.com/embed/${args.videoId}?autoplay=1` : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(args.query)}`;
-        return <div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-red-900/50 shadow-lg"><iframe width="100%" height="220" src={videoSrc} frameBorder="0" allowFullScreen /></div>;
+        // ✅ 1. Add Origin Fix
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        
+        // ✅ 2. Use Backend Result (Real ID) if available
+        const videoId = result?.videoId; 
+        
+        const videoSrc = videoId 
+            ? `https://www.youtube.com/embed/${videoId}?autoplay=1&origin=${origin}` 
+            : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(args.query)}&origin=${origin}`;
+            
+        return (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-red-900/50 shadow-lg">
+                <div className="p-2 bg-red-900/20 text-red-400 text-xs flex items-center gap-2 font-bold">
+                    <Music size={14} /> 
+                    {videoId ? "Playing Video" : "Searching YouTube..."}
+                </div>
+                <iframe 
+                    width="100%" 
+                    height="220" 
+                    src={videoSrc} 
+                    title="YouTube" 
+                    frameBorder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowFullScreen 
+                    className="w-full"
+                />
+            </motion.div>
+        );
     }
-    if (toolName === 'showMap') return <div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50"><div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div><div className="h-48 bg-gray-800"><iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={`https://maps.google.com/maps?q=${encodeURIComponent(args.location)}&t=&z=13&ie=UTF8&iwloc=&output=embed`} allowFullScreen></iframe></div></div>;
-    // ... Add other tools here if needed
+
+    if (toolName === 'showMap') {
+        const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`;
+        return (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50">
+                <div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div>
+                <div className="h-48 bg-gray-800">
+                    <iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={mapSrc} allowFullScreen></iframe>
+                </div>
+            </motion.div>
+        );
+    }
+    
+    // Schedule Event UI
+    if (toolName === 'scheduleEvent') {
+        return (
+            <div className="mt-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg flex items-center gap-3">
+               <Calendar className="text-purple-400" />
+               <div>
+                 <div className="text-xs text-purple-300 font-bold">Event Scheduled</div>
+                 <div className="text-sm text-white">{args.title} on {args.date}</div>
+               </div>
+               <CheckCircle className="text-green-500 ml-auto" size={16} />
+            </div>
+        );
+    }
+
+    // Email Mock UI
+    if (toolName === 'sendEmail') {
+        return (
+           <div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-blue-800/50 shadow-lg animate-in slide-in-from-left-2">
+               <div className="bg-blue-900/20 p-3 border-b border-blue-800/30 flex items-center gap-2"><div className="p-1.5 bg-blue-500 rounded-full"><Mail size={12} className="text-white" /></div><span className="text-sm font-bold text-blue-300">Email Draft</span></div>
+               <div className="p-4 text-sm space-y-3"><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">To:</span><span className="text-white font-medium">{args.to}</span></div><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">Sub:</span><span className="text-white">{args.subject}</span></div><div className="bg-black/30 p-3 rounded-lg text-gray-300 text-xs italic border-l-2 border-blue-500">"{args.body}"</div></div>
+           </div>
+        );
+    }
+
     return null;
   };
-
-  const AudioWaveform = () => (
-    <div className="flex items-center gap-1.5 h-16 absolute z-20 pointer-events-none">
-      {[...Array(5)].map((_, i) => (
-        <div key={i} className={`w-2.5 bg-gradient-to-t ${theme.gradient} rounded-full animate-wave shadow-[0_0_15px_rgba(168,85,247,0.6)]`} style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }} />
-      ))}
-    </div>
-  );
 
   const getAvatarSrc = () => {
     if (isBlinking) return "/amina_blink.png";
     if (faceExpression === "speaking") return "/amina_speaking.gif";
     if (faceExpression === "listening") return "/amina_listening.png";
     if (faceExpression === "thinking") return "/amina_thinking.png";
-    // Fallback logic
     return "/amina_idle.png";
   };
 
@@ -386,8 +422,9 @@ export default function ChatInterface() {
       </header>
 
       {/* CALL OVERLAY */}
+      <AnimatePresence>
       {isCallActive && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center animate-in fade-in duration-300">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
           <button onClick={() => { setIsCallActive(false); stopSpeaking(); }} className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700 z-50"><X size={24} /></button>
           
           <div className="relative cursor-pointer" onClick={() => !isListening && startListening()}>
@@ -395,8 +432,17 @@ export default function ChatInterface() {
             <div className={`w-48 h-48 rounded-full overflow-hidden border-4 ${theme.border} relative z-10`}>
               <img src={getAvatarSrc()} onError={(e) => e.currentTarget.src="/Amina_logo.png"} className="w-full h-full object-cover" />
             </div>
+            {/* Audio Waveform only inside overlay */}
             <div className="absolute inset-0 flex items-center justify-center z-20">
-               {isSpeaking ? <AudioWaveform /> : isListening ? <div className="bg-green-500 p-3 rounded-full border-2 border-black animate-bounce shadow-lg"><Mic size={24} fill="white" /></div> : null}
+               {isSpeaking ? (
+                 <div className="flex items-center gap-1.5 h-16 pointer-events-none">
+                   {[...Array(5)].map((_, i) => (
+                     <div key={i} className={`w-2.5 bg-gradient-to-t ${theme.gradient} rounded-full animate-wave shadow-[0_0_15px_rgba(168,85,247,0.6)]`} style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }} />
+                   ))}
+                 </div>
+               ) : isListening ? (
+                 <div className="bg-green-500 p-3 rounded-full border-2 border-black animate-bounce shadow-lg"><Mic size={24} fill="white" /></div>
+               ) : null}
             </div>
           </div>
 
@@ -406,8 +452,9 @@ export default function ChatInterface() {
           <div className="absolute bottom-12 flex items-center gap-3">
              <button onClick={() => setVoiceGender((v) => (v === "female" ? "male" : "female"))} className="px-6 py-3 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all">Switch Voice ({voiceGender})</button>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* MESSAGES */}
       <main className="flex-1 overflow-y-auto pt-20 pb-24 px-4 md:px-20 lg:px-64 scroll-smooth">
@@ -426,6 +473,7 @@ export default function ChatInterface() {
                   <div className={`w-9 h-9 rounded-full overflow-hidden border-2 ${theme.border} shrink-0`}><img src="/Amina_logo.png" className="w-full h-full object-cover" /></div>
                   <div className="flex flex-col gap-1 max-w-3xl">
                       <div className="bg-[#111827] text-gray-200 px-4 py-3 rounded-xl shadow-md border border-white/5"><RenderContent text={m.content} /></div>
+                      {/* 🔥 RENDER TOOLS HERE */}
                       {m.toolInvocations?.map((tool: any) => (<RenderToolInvocation key={tool.toolCallId} toolInvocation={tool} />))}
                   </div>
                 </div>
