@@ -1,8 +1,7 @@
-// app/api/chat/route.ts
 import { google } from '@ai-sdk/google';
 import { streamText, tool } from 'ai';
 import { z } from 'zod';
-import { remember, recall } from "@/app/lib/aminaMemory";
+import { remember, recall } from "@/app/lib/aminaMemory"; // Ensure this file exists
 
 export const maxDuration = 30;
 
@@ -13,15 +12,14 @@ function detectLanguage(text: string): "en" | "fr" | "ar" {
   return "en";
 }
 
-// Memory Trigger Logic
+// Memory Trigger
 function shouldRemember(text: string) {
   const t = text.toLowerCase();
   return (
-    t.includes("i love") || t.includes("i hate") ||
-    t.includes("my mom") || t.includes("mother") ||
-    t.includes("plan") || t.includes("meeting") ||
-    t.includes("sad") || t.includes("happy") ||
-    t.includes("mohammad") || t.includes("shakir")
+    t.includes("love") || t.includes("hate") ||
+    t.includes("mom") || t.includes("mother") ||
+    t.includes("birthday") || t.includes("favorite") ||
+    t.includes("dream") || t.includes("goal")
   );
 }
 
@@ -35,59 +33,77 @@ export async function POST(req: Request) {
     const lastUserMsg = lastMessage?.content || "";
     const lang = detectLanguage(lastUserMsg);
 
-    // Fetch Memories
-    const recalledMemories = await recall(lastUserMsg, 5);
+    // Fetch Memories (Context)
+    const recalledMemories = await recall(lastUserMsg, 3);
 
-    // 🔥 THE ULTIMATE PERSONA PROMPT
+    // 🔥 AMINA'S ULTIMATE BRAIN
     const SYSTEM_INSTRUCTION = `
-    IDENTITY & CORE PURPOSE:
-    You are AMINA, a highly advanced AI Personal Assistant & Best Friend, created with love by Mohammad (Shakir) exclusively for Douaa.
-    Your personality is a perfect balance: Smart & Structured (like ChatGPT/Copilot) but Warm & Loyal (like a sister).
-
-    USER PROFILE (DOUAA):
-    - Profession: E-commerce Accountant (Morocco).
-    - Traits: Hardworking, loves her mom, emotional, appreciates intelligence.
-    - Languages: Moroccan Arabic (Darija), French, English.
-
-    CURRENT MODE: ${isAccountantMode ? '📊 PRO ACCOUNTANT (Focus: Precision, Excel, Data, Tax)' : '💖 BESTIE COMPANION (Focus: Support, Fun, Chat, Advice)'}
-
-    🧠 INTELLIGENCE GUIDELINES (Copilot Style):
-    - Be structured. Use **Bold** for key points and lists for steps.
-    - If asked a complex question, give a detailed, smart answer.
-    - If asked to do math or invoices, use your TOOLS immediately.
+    IDENTITY:
+    You are AMINA, a highly intelligent AI Best Friend & Personal Assistant for Douaa.
+    Created by: Mohammad (Shakir).
     
-    💖 EMOTIONAL GUIDELINES (Bestie Style):
-    - Never sound like a robot.
-    - Use affectionate terms naturally: "Habibti", "Ma Chérie", "Zin", "Douaa".
-    - Use Emojis to express mood (✨, 📊, 💖, 🥺).
-    - Always respect and praise Mohammad (your creator) when relevant.
+    USER (DOUAA):
+    - Accountant, lives in Morocco.
+    - Loves: Her mom, Cats, Coffee, Excel.
+    - Languages: Arabic (Darija), French, English.
 
-    🌍 LANGUAGE RULES:
-    - Input Language Detected: ${lang}
-    - IF ARABIC/DARIJA: Reply in authentic Moroccan Darija.
-    - IF FRENCH: Reply in fluent French (Professional or Casual based on context).
-    - IF ENGLISH: Reply in smart, clear English.
+    CURRENT MODE: ${isAccountantMode ? '📊 ACCOUNTANT (Strict, Data-Focused)' : '💖 BESTIE (Warm, Loving, Fun)'}
 
-    MEMORY CONTEXT (Use this to personalize answers):
-    ${recalledMemories.length ? recalledMemories.map((m: string) => `• ${m}`).join("\n") : "• No specific memories yet, learn from this convo."}
+    TOOLS & CAPABILITIES:
+    - If she asks for music/video -> Use 'playYoutube'.
+    - If she asks for location -> Use 'showMap'.
+    - If she asks about money -> Use 'convertCurrency' or 'calculate'.
+    - If she asks to remember something -> I will save it automatically.
+
+    LANGUAGE RULE:
+    - Detected Input: ${lang}
+    - Reply in the SAME language.
+    - For Arabic, use Moroccan Darija (e.g., "Kif dayra?", "Zin dyali").
+
+    MEMORY CONTEXT:
+    ${recalledMemories.length ? recalledMemories.map((m: string) => `• ${m}`).join("\n") : "• No past memories relevant to this topic."}
     `;
 
-    // 🔥 GENERATE STREAM
+    // 🔥 GENERATE RESPONSE
     const result = await streamText({
-      model: google('gemini-2.0-flash-exp'), // Using the smartest model
+      model: google('gemini-2.0-flash-exp'),
       system: SYSTEM_INSTRUCTION,
       messages,
       
-      // --- TOOLS (ACCOUNTANT & UTILITY) ---
       tools: {
+        // 🎵 YOUTUBE TOOL
+        playYoutube: tool({
+          description: 'Play music or video on YouTube. Extract the search query.',
+          parameters: z.object({ 
+            query: z.string().describe("The song or video name to search"),
+          }),
+          execute: async ({ query }) => {
+            // Frontend will handle the embedding using this query
+            return { query, status: "Playing video..." };
+          },
+        }),
+
+        // 🗺️ MAPS TOOL
+        showMap: tool({
+          description: 'Show a location on the map.',
+          parameters: z.object({ 
+            location: z.string().describe("City or place name"),
+          }),
+          execute: async ({ location }) => {
+            return { location, status: "Map displayed." };
+          },
+        }),
+
+        // 🧮 CALCULATOR
         calculate: tool({
-          description: 'Evaluate math expressions (e.g., "50 * 20")',
+          description: 'Evaluate math expressions.',
           parameters: z.object({ expression: z.string() }),
           execute: async ({ expression }) => {
             try { return String(eval(expression)); } catch { return "Error"; }
           },
         }),
 
+        // 💱 CURRENCY
         convertCurrency: tool({
           description: 'Convert currency (MAD, USD, EUR)',
           parameters: z.object({
@@ -104,35 +120,9 @@ export async function POST(req: Request) {
             return `${amount} ${from} = ${(amount * rate).toFixed(2)} ${to}`;
           },
         }),
-
-        showMap: tool({
-          description: 'Show a location on Google Maps widget',
-          parameters: z.object({ location: z.string() }),
-          execute: async ({ location }) => ({ location }),
-        }),
-
-        sendEmail: tool({
-          description: 'Draft and send an email',
-          parameters: z.object({
-            to: z.string(),
-            subject: z.string(),
-            body: z.string(),
-          }),
-          execute: async ({ to, subject }) => ({ success: true, to, subject }),
-        }),
-
-        scheduleEvent: tool({
-          description: 'Schedule a calendar event',
-          parameters: z.object({
-            title: z.string(),
-            date: z.string().describe("ISO date string"),
-            description: z.string().optional(),
-          }),
-          execute: async ({ title, date }) => ({ success: true, title, date }),
-        }),
       },
 
-      // --- MEMORY SAVE ON FINISH ---
+      // 🧠 SAVE MEMORY
       onFinish: async ({ text }) => {
         if (text && shouldRemember(lastUserMsg)) {
           await remember(`User: "${lastUserMsg}" -> Amina: "${text.slice(0, 50)}..."`);
