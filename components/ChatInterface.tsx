@@ -7,11 +7,10 @@ import {
   Mail, CheckCircle, Zap, Calendar
 } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
-// ✅ Animation Library (Ensure you ran: npm install framer-motion)
 import { motion, AnimatePresence } from "framer-motion"; 
 
 // ==========================================
-// 🧾 INVOICE TABLE (YOUR UI)
+// 1. INVOICE TABLE (OUTSIDE MAIN FUNCTION)
 // ==========================================
 const InvoiceTable = ({ data }: { data: any }) => {
   if (!data?.rows) return null;
@@ -54,10 +53,76 @@ const InvoiceTable = ({ data }: { data: any }) => {
 };
 
 // ==========================================
-// 💬 MAIN CHAT INTERFACE
+// 2. TOOL RENDERER (MOVED OUTSIDE - FIXED LOOPING)
+// ==========================================
+const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
+  const { toolName, args, result } = toolInvocation;
+  
+  if (toolName === 'playYoutube') {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const videoId = result?.videoId; // Use ID from backend
+      
+      const videoSrc = videoId 
+          ? `https://www.youtube.com/embed/${videoId}?autoplay=1&origin=${origin}` 
+          : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(args.query)}&origin=${origin}`;
+          
+      return (
+          <div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-red-900/50 shadow-lg">
+              <div className="p-2 bg-red-900/20 text-red-400 text-xs flex items-center gap-2 font-bold"><Music size={14} /> Playing on YouTube</div>
+              <iframe 
+                width="100%" height="220" 
+                src={videoSrc} 
+                title="YouTube"
+                frameBorder="0" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen 
+                className="w-full"
+              />
+          </div>
+      );
+  }
+
+  if (toolName === 'showMap') {
+      const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`;
+      return (
+          <div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50">
+              <div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div>
+              <div className="h-48 bg-gray-800">
+                  <iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={mapSrc} allowFullScreen></iframe>
+              </div>
+          </div>
+      );
+  }
+  
+  if (toolName === 'scheduleEvent') {
+      return (
+          <div className="mt-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg flex items-center gap-3">
+             <Calendar className="text-purple-400" />
+             <div>
+               <div className="text-xs text-purple-300 font-bold">Event Scheduled</div>
+               <div className="text-sm text-white">{args.title} on {args.date}</div>
+             </div>
+             <CheckCircle className="text-green-500 ml-auto" size={16} />
+          </div>
+      );
+  }
+
+  if (toolName === 'sendEmail') {
+      return (
+         <div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-blue-800/50 shadow-lg">
+             <div className="bg-blue-900/20 p-3 border-b border-blue-800/30 flex items-center gap-2"><div className="p-1.5 bg-blue-500 rounded-full"><Mail size={12} className="text-white" /></div><span className="text-sm font-bold text-blue-300">Email Draft</span></div>
+             <div className="p-4 text-sm space-y-3"><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">To:</span><span className="text-white font-medium">{args.to}</span></div><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">Sub:</span><span className="text-white">{args.subject}</span></div><div className="bg-black/30 p-3 rounded-lg text-gray-300 text-xs italic border-l-2 border-blue-500">"{args.body}"</div></div>
+         </div>
+      );
+  }
+
+  return null;
+};
+
+// ==========================================
+// 3. MAIN CHAT INTERFACE
 // ==========================================
 export default function ChatInterface() {
-  // State
   const [isAccountantMode, setIsAccountantMode] = useState(false);
   const [isCallActive, setIsCallActive] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -68,26 +133,22 @@ export default function ChatInterface() {
   const [faceExpression, setFaceExpression] = useState<"idle" | "listening" | "speaking" | "thinking">("idle");
   const [isBlinking, setIsBlinking] = useState(false);
 
-  // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastSpokenId = useRef<string | null>(null);
 
-  // --- THEME ---
   const theme = isAccountantMode 
     ? { border: "border-blue-500", text: "text-blue-300", bg: "bg-blue-600", gradient: "from-blue-500 to-cyan-500", glow: "rgba(59, 130, 246, 0.6)" }
     : { border: "border-purple-500", text: "text-purple-300", bg: "bg-purple-600", gradient: "from-purple-500 to-pink-500", glow: "rgba(168, 85, 247, 0.6)" };
 
-  // --- CHAT HOOK ---
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages, setInput } = useChat({
     api: "/api/chat",
     body: { data: { isAccountantMode } },
     onError: (err) => console.error("Chat Error:", err),
   });
 
-  // --- MEMORY ---
   const MAX_STORE_MESSAGES = 30;
   useEffect(() => {
     const saved = localStorage.getItem("amina_memory_v1");
@@ -120,10 +181,6 @@ export default function ChatInterface() {
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // ==========================================
-  // --- AUDIO LOGIC ---
-  // ==========================================
-  
   const stopSpeaking = () => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -183,7 +240,6 @@ export default function ChatInterface() {
       };
 
       await audio.play();
-
     } catch (e) {
       console.error("Speak Error:", e);
       setIsSpeaking(false);
@@ -199,7 +255,6 @@ export default function ChatInterface() {
     }
   }, [messages, isLoading, isCallActive]);
 
-  // --- SPEECH RECOGNITION ---
   const startListening = () => {
     if (!isCallActive || isSpeaking) return;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -242,7 +297,6 @@ export default function ChatInterface() {
     try { recognition.start(); } catch(e){}
   };
 
-  // --- UI EFFECTS ---
   useEffect(() => {
     if (isLoading) {
         setFaceExpression("thinking");
@@ -261,7 +315,6 @@ export default function ChatInterface() {
     return () => clearInterval(interval);
   }, [faceExpression]);
 
-  // --- FILE HANDLING ---
   async function resizeAndToDataUrl(file: File): Promise<string> {
     return new Promise((resolve) => {
       const img = new Image();
@@ -301,91 +354,10 @@ export default function ChatInterface() {
     }
   };
 
-  // --- RENDERERS ---
   const RenderContent = ({ text }: { text?: string }) => {
     if (!text) return null;
-    try {
-      if (text.trim().startsWith('{') && text.includes('"rows":')) {
-        const data = JSON.parse(text);
-        if (data.rows && data.summary) return <InvoiceTable data={data} />;
-      }
-    } catch (e) {}
     const html = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br/>");
     return <div className="prose prose-invert max-w-full text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
-  };
-
-  // 🔥 TOOL RENDERER (YOUR UI + FIXED LOGIC)
-  const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
-    const { toolName, args, result } = toolInvocation;
-    
-    if (toolName === 'playYoutube') {
-        // ✅ 1. Add Origin Fix
-        const origin = typeof window !== 'undefined' ? window.location.origin : '';
-        
-        // ✅ 2. Use Backend Result (Real ID) if available
-        const videoId = result?.videoId; 
-        
-        const videoSrc = videoId 
-            ? `https://www.youtube.com/embed/${videoId}?autoplay=1&origin=${origin}` 
-            : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(args.query)}&origin=${origin}`;
-            
-        return (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-red-900/50 shadow-lg">
-                <div className="p-2 bg-red-900/20 text-red-400 text-xs flex items-center gap-2 font-bold">
-                    <Music size={14} /> 
-                    {videoId ? "Playing Video" : "Searching YouTube..."}
-                </div>
-                <iframe 
-                    width="100%" 
-                    height="220" 
-                    src={videoSrc} 
-                    title="YouTube" 
-                    frameBorder="0" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                    allowFullScreen 
-                    className="w-full"
-                />
-            </motion.div>
-        );
-    }
-
-    if (toolName === 'showMap') {
-        const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`;
-        return (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50">
-                <div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div>
-                <div className="h-48 bg-gray-800">
-                    <iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={mapSrc} allowFullScreen></iframe>
-                </div>
-            </motion.div>
-        );
-    }
-    
-    // Schedule Event UI
-    if (toolName === 'scheduleEvent') {
-        return (
-            <div className="mt-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg flex items-center gap-3">
-               <Calendar className="text-purple-400" />
-               <div>
-                 <div className="text-xs text-purple-300 font-bold">Event Scheduled</div>
-                 <div className="text-sm text-white">{args.title} on {args.date}</div>
-               </div>
-               <CheckCircle className="text-green-500 ml-auto" size={16} />
-            </div>
-        );
-    }
-
-    // Email Mock UI
-    if (toolName === 'sendEmail') {
-        return (
-           <div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-blue-800/50 shadow-lg animate-in slide-in-from-left-2">
-               <div className="bg-blue-900/20 p-3 border-b border-blue-800/30 flex items-center gap-2"><div className="p-1.5 bg-blue-500 rounded-full"><Mail size={12} className="text-white" /></div><span className="text-sm font-bold text-blue-300">Email Draft</span></div>
-               <div className="p-4 text-sm space-y-3"><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">To:</span><span className="text-white font-medium">{args.to}</span></div><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">Sub:</span><span className="text-white">{args.subject}</span></div><div className="bg-black/30 p-3 rounded-lg text-gray-300 text-xs italic border-l-2 border-blue-500">"{args.body}"</div></div>
-           </div>
-        );
-    }
-
-    return null;
   };
 
   const getAvatarSrc = () => {
