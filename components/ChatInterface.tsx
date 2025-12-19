@@ -2,15 +2,15 @@
 
 import { useChat } from "ai/react";
 import { 
-  Send, Mic, Paperclip, Phone, X, Trash2, Square, 
+  Send, Mic, Paperclip, Phone, X, Trash2, 
   Briefcase, Heart, Music, MapPin, Calculator, Sparkles,
-  Mail, CheckCircle, Zap, Calendar
+  Mail, Calendar, CheckCircle
 } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion"; 
 
 // ==========================================
-// 1. INVOICE TABLE (OUTSIDE MAIN FUNCTION)
+// 1. INVOICE TABLE (UNCHANGED)
 // ==========================================
 const InvoiceTable = ({ data }: { data: any }) => {
   if (!data?.rows) return null;
@@ -53,31 +53,21 @@ const InvoiceTable = ({ data }: { data: any }) => {
 };
 
 // ==========================================
-// 2. TOOL RENDERER (MOVED OUTSIDE - FIXED LOOPING)
+// 2. TOOL RENDERER (UNCHANGED)
 // ==========================================
 const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
   const { toolName, args, result } = toolInvocation;
   
   if (toolName === 'playYoutube') {
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const videoId = result?.videoId; // Use ID from backend
-      
+      const videoId = result?.videoId;
       const videoSrc = videoId 
           ? `https://www.youtube.com/embed/${videoId}?autoplay=1&origin=${origin}` 
           : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(args.query)}&origin=${origin}`;
-          
       return (
           <div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-red-900/50 shadow-lg">
               <div className="p-2 bg-red-900/20 text-red-400 text-xs flex items-center gap-2 font-bold"><Music size={14} /> Playing on YouTube</div>
-              <iframe 
-                width="100%" height="220" 
-                src={videoSrc} 
-                title="YouTube"
-                frameBorder="0" 
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen 
-                className="w-full"
-              />
+              <iframe width="100%" height="220" src={videoSrc} title="YouTube" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full" />
           </div>
       );
   }
@@ -98,11 +88,7 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
       return (
           <div className="mt-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg flex items-center gap-3">
              <Calendar className="text-purple-400" />
-             <div>
-               <div className="text-xs text-purple-300 font-bold">Event Scheduled</div>
-               <div className="text-sm text-white">{args.title} on {args.date}</div>
-             </div>
-             <CheckCircle className="text-green-500 ml-auto" size={16} />
+             <div><div className="text-xs text-purple-300 font-bold">Event Scheduled</div><div className="text-sm text-white">{args.title} on {args.date}</div></div><CheckCircle className="text-green-500 ml-auto" size={16} />
           </div>
       );
   }
@@ -115,7 +101,6 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
          </div>
       );
   }
-
   return null;
 };
 
@@ -140,9 +125,10 @@ export default function ChatInterface() {
   const lastSpokenId = useRef<string | null>(null);
 
   const theme = isAccountantMode 
-    ? { border: "border-blue-500", text: "text-blue-300", bg: "bg-blue-600", gradient: "from-blue-500 to-cyan-500", glow: "rgba(59, 130, 246, 0.6)" }
+    ? { border: "border-blue-500", text: "text-blue-300", bg: "bg-blue-600", gradient: "from-blue-500 to-cyan-500" }
     : { border: "border-purple-500", text: "text-purple-300", bg: "bg-purple-600", gradient: "from-purple-500 to-pink-500", glow: "rgba(168, 85, 247, 0.6)" };
 
+  // 1. ALWAYS USE CHAT API DEFAULT (Vision handled manually)
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages, setInput } = useChat({
     api: "/api/chat",
     body: { data: { isAccountantMode } },
@@ -152,56 +138,31 @@ export default function ChatInterface() {
   const MAX_STORE_MESSAGES = 30;
   useEffect(() => {
     const saved = localStorage.getItem("amina_memory_v1");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) setMessages(parsed.slice(-MAX_STORE_MESSAGES));
-      } catch (e) {}
-    }
+    if (saved) { try { const parsed = JSON.parse(saved); if (Array.isArray(parsed)) setMessages(parsed.slice(-MAX_STORE_MESSAGES)); } catch (e) {} }
   }, []);
 
   useEffect(() => {
     if (messages.length === 0) return;
     const toStore = messages.slice(-MAX_STORE_MESSAGES).map((m: any) => ({ 
-        id: m.id, role: m.role, content: (m.content || "").slice(0, 1000), toolInvocations: m.toolInvocations 
+        id: m.id, role: m.role, content: (typeof m.content === 'string' ? m.content : "Image"), toolInvocations: m.toolInvocations 
     }));
-    const id = setTimeout(() => {
-      try { localStorage.setItem("amina_memory_v1", JSON.stringify(toStore)); } catch (e) {}
-    }, 400);
+    const id = setTimeout(() => { try { localStorage.setItem("amina_memory_v1", JSON.stringify(toStore)); } catch (e) {} }, 400);
     return () => clearTimeout(id);
   }, [messages, setMessages]);
 
-  const clearChat = () => {
-    if (confirm("Delete memory?")) {
-      localStorage.removeItem("amina_memory_v1");
-      setMessages([]);
-      stopSpeaking();
-    }
-  };
-
+  const clearChat = () => { if (confirm("Delete memory?")) { localStorage.removeItem("amina_memory_v1"); setMessages([]); stopSpeaking(); } };
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const stopSpeaking = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current = null;
-    }
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; audioRef.current = null; }
     setIsSpeaking(false);
-    if (isCallActive) {
-        setStatusText("Listening...");
-        setFaceExpression("listening");
-        startListening();
-    } else {
-        setStatusText("");
-        setFaceExpression("idle");
-    }
+    if (isCallActive) { setStatusText("Listening..."); setFaceExpression("listening"); startListening(); } 
+    else { setStatusText(""); setFaceExpression("idle"); }
   };
 
   const speak = async (rawText: string, messageId: string) => {
     if (lastSpokenId.current === messageId) return;
     lastSpokenId.current = messageId;
-
     if (isListening) { setIsListening(false); try { recognitionRef.current?.stop(); } catch(e){} }
     if (audioRef.current) { audioRef.current.pause(); }
 
@@ -209,123 +170,51 @@ export default function ChatInterface() {
     if (!cleanText) return;
 
     setStatusText(voiceGender === "female" ? "Amina Speaking..." : "Mohammad Speaking...");
-    setIsSpeaking(true);
-    setFaceExpression("speaking");
+    setIsSpeaking(true); setFaceExpression("speaking");
 
     try {
-      const res = await fetch("/api/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: cleanText, voice: voiceGender }),
-      });
-
+      const res = await fetch("/api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: cleanText, voice: voiceGender }) });
       if (!res.ok) throw new Error("TTS Failed");
-
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
-
-      audio.onended = () => {
-        setIsSpeaking(false);
-        URL.revokeObjectURL(url);
-        if (isCallActive) {
-            setStatusText("Listening...");
-            setFaceExpression("listening");
-            startListening();
-        } else {
-            setStatusText("");
-            setFaceExpression("idle");
-        }
-      };
-
+      audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); if (isCallActive) { setStatusText("Listening..."); setFaceExpression("listening"); startListening(); } else { setStatusText(""); setFaceExpression("idle"); } };
       await audio.play();
-    } catch (e) {
-      console.error("Speak Error:", e);
-      setIsSpeaking(false);
-      setFaceExpression("idle");
-      if(isCallActive) startListening();
-    }
+    } catch (e) { setIsSpeaking(false); setFaceExpression("idle"); if(isCallActive) startListening(); }
   };
 
   useEffect(() => {
     const last = messages[messages.length - 1];
-    if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) {
-      speak(last.content, last.id);
-    }
+    if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) { speak(last.content, last.id); }
   }, [messages, isLoading, isCallActive]);
 
   const startListening = () => {
     if (!isCallActive || isSpeaking) return;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return setStatusText("Mic not supported");
-
     if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){}
-
     const recognition = new SR();
     recognitionRef.current = recognition;
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      setStatusText("Listening...");
-      setFaceExpression("listening");
-    };
-
-    recognition.onresult = (e: any) => {
-      const t = e.results?.[0]?.[0]?.transcript;
-      if (t?.trim()) {
-        setStatusText("Thinking...");
-        setIsListening(false);
-        setFaceExpression("thinking");
-        append({ role: "user", content: t });
-      }
-    };
-
-    recognition.onerror = () => {
-      setIsListening(false);
-      setStatusText("Tap Avatar");
-      setFaceExpression("idle");
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
+    recognition.continuous = false; recognition.interimResults = false; recognition.lang = "en-US";
+    recognition.onstart = () => { setIsListening(true); setStatusText("Listening..."); setFaceExpression("listening"); };
+    recognition.onresult = (e: any) => { const t = e.results?.[0]?.[0]?.transcript; if (t?.trim()) { setStatusText("Thinking..."); setIsListening(false); setFaceExpression("thinking"); append({ role: "user", content: t }); } };
+    recognition.onerror = () => { setIsListening(false); setStatusText("Tap Avatar"); setFaceExpression("idle"); };
+    recognition.onend = () => { setIsListening(false); };
     try { recognition.start(); } catch(e){}
   };
 
-  useEffect(() => {
-    if (isLoading) {
-        setFaceExpression("thinking");
-    } else if (!isSpeaking && !isCallActive) {
-        setFaceExpression("idle");
-    }
-  }, [isLoading, isSpeaking, isCallActive]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (faceExpression === "idle") {
-        setIsBlinking(true);
-        setTimeout(() => setIsBlinking(false), 150);
-      }
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [faceExpression]);
+  useEffect(() => { if (isLoading) { setFaceExpression("thinking"); } else if (!isSpeaking && !isCallActive) { setFaceExpression("idle"); } }, [isLoading, isSpeaking, isCallActive]);
+  useEffect(() => { const interval = setInterval(() => { if (faceExpression === "idle") { setIsBlinking(true); setTimeout(() => setIsBlinking(false), 150); } }, 4000); return () => clearInterval(interval); }, [faceExpression]);
 
   async function resizeAndToDataUrl(file: File): Promise<string> {
     return new Promise((resolve) => {
-      const img = new Image();
-      const reader = new FileReader();
+      const img = new Image(); const reader = new FileReader();
       reader.onload = (e) => { img.src = e.target?.result as string; };
       img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
+        const canvas = document.createElement("canvas"); const ctx = canvas.getContext("2d");
         const scale = Math.min(1024 / img.width, 1024 / img.height, 1);
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
+        canvas.width = img.width * scale; canvas.height = img.height * scale;
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL("image/jpeg", 0.7));
       };
@@ -333,58 +222,137 @@ export default function ChatInterface() {
     });
   }
 
-  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) setSelectedImage(await resizeAndToDataUrl(e.target.files[0]));
-  };
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) setSelectedImage(await resizeAndToDataUrl(e.target.files[0])); };
 
+  // 🔥 MANUAL VISION FETCH (The "Option A" Fix)
+  // This completely bypasses 'append' for images to guarantee stability
+// 🔥 CLEAN & SIMPLE SUBMIT HANDLER
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!input?.trim() && !selectedImage) || isLoading) return;
-    const currentInput = input;
+    
+    const userMessage = input;
+    const imageToSend = selectedImage;
+    
     setInput("");
-    if (selectedImage) {
-      await append({
-        role: "user",
-        content: currentInput || "[Image]",
-        experimental_attachments: [{ name: "img.jpg", contentType: "image/jpeg", url: selectedImage }],
-      } as any, { data: { isAccountantMode } });
-      setSelectedImage(null);
-    } else {
-      await append({ role: "user", content: currentInput } as any, { data: { isAccountantMode } });
+    setSelectedImage(null);
+
+    // CASE 1: VISION MODE
+    if (imageToSend) {
+      // UI Update (Optimistic)
+      const userMsgId = Date.now().toString();
+      const newUserMsg = {
+          id: userMsgId,
+          role: 'user',
+          content: userMessage || "Analyze this image",
+          experimental_attachments: [{
+               name: "image.jpg", contentType: "image/jpeg", url: imageToSend 
+          }]
+      };
+      setMessages(prev => [...prev, newUserMsg as any]);
+
+      // Assistant Placeholder (Loading...)
+      const assistantMsgId = (Date.now() + 1).toString();
+      setMessages(prev => [...prev, {
+          id: assistantMsgId, role: 'assistant', content: "👀 Looking at image..."
+      } as any]);
+
+      try {
+          // Fetch Simple JSON
+          const res = await fetch("/api/vision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: userMessage || "Analyze this image" },
+                    { type: "image", image: imageToSend },
+                  ],
+                },
+              ],
+            }),
+          });
+
+          const data = await res.json(); // 🔥 Simple JSON parse (No more reader/decoder)
+          
+          // Update the "Looking..." message with real text
+          setMessages(prev => prev.map(m => 
+            m.id === assistantMsgId 
+              ? { ...m, content: data.text } 
+              : m
+          ));
+
+      } catch (err) {
+          console.error("Vision Error:", err);
+          setMessages(prev => prev.map(m => 
+            m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m
+          ));
+      }
+      return;
     }
+
+    // CASE 2: NORMAL CHAT
+    await append({ 
+        role: "user", content: userMessage 
+    }, { body: { data: { isAccountantMode } } });
   };
 
-  const RenderContent = ({ text }: { text?: string }) => {
-    if (!text) return null;
+  // 🔥 SAFE RENDER CONTENT
+  const RenderContent = ({ text }: { text?: any }) => {
+    if (!text || typeof text !== 'string') return null;
     const html = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br/>");
+    try { if (text.trim().startsWith('{') && text.includes('"rows":')) { const data = JSON.parse(text); if (data.rows && data.summary) return <InvoiceTable data={data} />; } } catch (e) {}
     return <div className="prose prose-invert max-w-full text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
+  // 🔥 UNIVERSAL MESSAGE RENDERER
+  const MessageContent = ({ message }: { message: any }) => {
+    if (!message || !message.content) return null;
+
+    // A. Array Format (Vision)
+    if (Array.isArray(message.content)) {
+        return (
+            <div className="flex flex-col gap-2">
+                {message.content.map((part: any, i: number) => {
+                    if (part.type === 'image' && part.image) {
+                        return <div key={i} className="rounded-lg overflow-hidden border border-white/20 my-2"><img src={part.image} className="w-full max-w-xs h-auto" /></div>;
+                    }
+                    if (part.type === 'text' && part.text) return <RenderContent key={i} text={part.text} />;
+                    return null;
+                })}
+            </div>
+        );
+    }
+
+    // B. Experimental Attachments (UI Safety)
+    const hasAttachments = message.experimental_attachments && message.experimental_attachments.length > 0;
+    if (hasAttachments) {
+         return (
+            <div className="flex flex-col gap-2">
+                <div className="rounded-lg overflow-hidden border border-white/20 my-2">
+                    <img src={message.experimental_attachments[0].url} className="w-full max-w-xs h-auto object-cover" />
+                </div>
+                <RenderContent text={message.content} />
+            </div>
+         );
+    }
+
+    // C. Normal Text
+    return <RenderContent text={message.content} />;
+  };
+
   const getAvatarSrc = () => {
-    if (isBlinking) return "/amina_blink.png";
-    if (faceExpression === "speaking") return "/amina_speaking.gif";
-    if (faceExpression === "listening") return "/amina_listening.png";
-    if (faceExpression === "thinking") return "/amina_thinking.png";
-    return "/amina_idle.png";
+    if (isBlinking) return "/amina_blink.png"; if (faceExpression === "speaking") return "/amina_speaking.gif"; if (faceExpression === "listening") return "/amina_listening.png"; if (faceExpression === "thinking") return "/amina_thinking.png"; return "/amina_idle.png";
   };
 
   return (
     <div className="flex flex-col h-screen bg-black text-white font-sans relative">
-      <style jsx global>{`
-        @keyframes wave { 0%, 100% { height: 20%; opacity: 0.7; } 50% { height: 100%; opacity: 1; } }
-        .animate-wave { animation: wave infinite ease-in-out; }
-      `}</style>
-
-      {/* HEADER */}
       <header className="h-16 border-b border-white/10 flex items-center px-4 justify-between bg-black/80 fixed w-full top-0 z-50 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-full overflow-hidden border-2 ${theme.border}`}>
-            <img src="/Amina_logo.png" className="w-full h-full object-cover" />
-          </div>
-          <div>
-            <h1 className={`font-bold text-lg text-transparent bg-clip-text bg-gradient-to-r ${theme.gradient}`}>{isAccountantMode ? "AMINA CPA" : "AMINA AI"}</h1>
-            <p className="text-[10px] text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Online</p>
-          </div>
+          <div className={`w-10 h-10 rounded-full overflow-hidden border-2 ${theme.border}`}><img src="/Amina_logo.png" className="w-full h-full object-cover" /></div>
+          <div><h1 className={`font-bold text-lg text-transparent bg-clip-text bg-gradient-to-r ${theme.gradient}`}>{isAccountantMode ? "AMINA CPA" : "AMINA AI"}</h1><p className="text-[10px] text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Online</p></div>
         </div>
         <div className="flex gap-2">
             <button onClick={() => setIsAccountantMode(!isAccountantMode)} className={`p-2 rounded-full ${isAccountantMode ? "bg-blue-600/20 text-blue-300" : "bg-purple-600/20 text-purple-300"}`}>{isAccountantMode ? <Briefcase size={20}/> : <Heart size={20}/>}</button>
@@ -398,37 +366,20 @@ export default function ChatInterface() {
       {isCallActive && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
           <button onClick={() => { setIsCallActive(false); stopSpeaking(); }} className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700 z-50"><X size={24} /></button>
-          
           <div className="relative cursor-pointer" onClick={() => !isListening && startListening()}>
             <div className={`absolute inset-0 ${voiceGender === "female" ? theme.bg : "bg-green-600"} rounded-full blur-3xl opacity-40 ${isListening || isSpeaking ? "animate-pulse scale-125" : ""} transition-all duration-1000`}></div>
-            <div className={`w-48 h-48 rounded-full overflow-hidden border-4 ${theme.border} relative z-10`}>
-              <img src={getAvatarSrc()} onError={(e) => e.currentTarget.src="/Amina_logo.png"} className="w-full h-full object-cover" />
-            </div>
-            {/* Audio Waveform only inside overlay */}
+            <div className={`w-48 h-48 rounded-full overflow-hidden border-4 ${theme.border} relative z-10`}><img src={getAvatarSrc()} onError={(e) => e.currentTarget.src="/Amina_logo.png"} className="w-full h-full object-cover" /></div>
             <div className="absolute inset-0 flex items-center justify-center z-20">
-               {isSpeaking ? (
-                 <div className="flex items-center gap-1.5 h-16 pointer-events-none">
-                   {[...Array(5)].map((_, i) => (
-                     <div key={i} className={`w-2.5 bg-gradient-to-t ${theme.gradient} rounded-full animate-wave shadow-[0_0_15px_rgba(168,85,247,0.6)]`} style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }} />
-                   ))}
-                 </div>
-               ) : isListening ? (
-                 <div className="bg-green-500 p-3 rounded-full border-2 border-black animate-bounce shadow-lg"><Mic size={24} fill="white" /></div>
-               ) : null}
+               {isSpeaking ? (<div className="flex items-center gap-1.5 h-16 pointer-events-none">{[...Array(5)].map((_, i) => (<div key={i} className={`w-2.5 bg-gradient-to-t ${theme.gradient} rounded-full animate-wave shadow-[0_0_15px_rgba(168,85,247,0.6)]`} style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }} />))}</div>) : isListening ? (<div className="bg-green-500 p-3 rounded-full border-2 border-black animate-bounce shadow-lg"><Mic size={24} fill="white" /></div>) : null}
             </div>
           </div>
-
           <h2 className="mt-10 text-3xl font-bold text-white">{voiceGender === "female" ? "Amina" : "Mohammad"}</h2>
           <p className={`text-lg mt-2 font-medium ${theme.text}`}>{statusText || "Tap Avatar to Start"}</p>
-          
-          <div className="absolute bottom-12 flex items-center gap-3">
-             <button onClick={() => setVoiceGender((v) => (v === "female" ? "male" : "female"))} className="px-6 py-3 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all">Switch Voice ({voiceGender})</button>
-          </div>
+          <div className="absolute bottom-12 flex items-center gap-3"><button onClick={() => setVoiceGender((v) => (v === "female" ? "male" : "female"))} className="px-6 py-3 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all">Switch Voice ({voiceGender})</button></div>
         </motion.div>
       )}
       </AnimatePresence>
 
-      {/* MESSAGES */}
       <main className="flex-1 overflow-y-auto pt-20 pb-24 px-4 md:px-20 lg:px-64 scroll-smooth">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center animate-in fade-in">
@@ -444,16 +395,16 @@ export default function ChatInterface() {
                 <div className="flex items-start gap-3">
                   <div className={`w-9 h-9 rounded-full overflow-hidden border-2 ${theme.border} shrink-0`}><img src="/Amina_logo.png" className="w-full h-full object-cover" /></div>
                   <div className="flex flex-col gap-1 max-w-3xl">
-                      <div className="bg-[#111827] text-gray-200 px-4 py-3 rounded-xl shadow-md border border-white/5"><RenderContent text={m.content} /></div>
-                      {/* 🔥 RENDER TOOLS HERE */}
+                      <div className="bg-[#111827] text-gray-200 px-4 py-3 rounded-xl shadow-md border border-white/5">
+                          <MessageContent message={m} />
+                      </div>
                       {m.toolInvocations?.map((tool: any) => (<RenderToolInvocation key={tool.toolCallId} toolInvocation={tool} />))}
                   </div>
                 </div>
               ) : (
                 <div className="flex items-start gap-3 justify-end">
                   <div className={`bg-gradient-to-r ${theme.gradient} text-white px-4 py-2 rounded-full max-w-xs break-words shadow-lg`}>
-                    {m.experimental_attachments?.map((attachment: any, i: number) => (<div key={i} className="mb-2 rounded-lg overflow-hidden"><img src={attachment.url} className="w-full h-auto max-h-48 object-cover" /></div>))}
-                    <RenderContent text={m.content} />
+                    <MessageContent message={m} />
                   </div>
                 </div>
               )}
@@ -463,7 +414,6 @@ export default function ChatInterface() {
         <div ref={messagesEndRef} />
       </main>
 
-      {/* FOOTER */}
       <footer className="fixed bottom-0 w-full p-4 bg-black/90 backdrop-blur-md z-50 border-t border-white/10">
         <div className="max-w-3xl mx-auto">
           {selectedImage && <div className="mb-2 relative w-fit animate-in slide-in-from-bottom-2"><img src={selectedImage} alt="Selected" className={`w-20 h-20 object-cover rounded-lg border ${theme.border}`} /><button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"><X size={12} fill="white" /></button></div>}
