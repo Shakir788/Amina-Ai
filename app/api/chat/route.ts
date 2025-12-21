@@ -2,6 +2,7 @@ import { google } from '@ai-sdk/google';
 import { streamText, tool } from 'ai';
 import { z } from 'zod';
 import { remember, recall } from "@/app/lib/aminaMemory";
+import { generateImageWithGemini } from "@/app/lib/imageGen"; // 👈 New Import
 
 export const maxDuration = 30;
 
@@ -18,7 +19,7 @@ function shouldRemember(text: string) {
   return [
     "love","hate","mom","mother","birthday",
     "favorite","dream","goal",
-    "mohammad","shakir","douaa"
+    "mohammad","douaa"
   ].some(w => t.includes(w));
 }
 
@@ -31,23 +32,16 @@ export async function POST(req: Request) {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
     /* -------- MESSAGE SANITIZER -------- */
-    // Ye code ensure karega ki crash na ho, lekin Tools ko zinda rakhega
     const coreMessages = messages.filter((m: any) => {
-        // 1. Tool hai? Rakho.
         if (m.toolInvocations || m.role === 'tool') return true;
-        // 2. Image hai? Rakho.
         if (Array.isArray(m.content)) return true;
-        // 3. Text hai? Check karo khali to nahi.
         if (typeof m.content === 'string' && m.content.trim() !== '') return true;
-        
-        return false; // Khali message delete
+        return false; 
     });
 
-    // 🔍 Check Vision Flag
     const lastUserMsg = messages[messages.length - 1]?.content || "";
     const imagePresent = Array.isArray(lastUserMsg) && lastUserMsg.some((c: any) => c.type === 'image');
     
-    // Memory & Language
     let userText = "";
     if (typeof lastUserMsg === 'string') userText = lastUserMsg;
     const lang = detectLanguage(userText);
@@ -78,6 +72,10 @@ CORE BEHAVIOUR:
 2. **DO NOT** just say "Playing now" without using the tool. That is fake.
 3. If user says "Stop", "Chup", "Band karo" -> **USE 'stopMusic' TOOL**.
 
+🎨 IMAGE GENERATION RULES:
+1. If user says "Draw", "Generate image", "Paint", "Photo of..." -> **USE 'generateImage' TOOL**.
+2. Create a detailed prompt for the image generator based on what the user asked.
+
 VISION:
 ${imagePresent ? "⚠️ USER SENT AN IMAGE. Analyze it immediately." : ""}
 
@@ -95,11 +93,32 @@ ${recalledMemories.map((m: string) => `• ${m}`).join("\n")}
     /* ---------------- STREAM ---------------- */
 
     const result = await streamText({
-      model: google("gemini-2.5-pro"),
+      model: google("gemini-2.5-pro"), // ✅ Using your requested model
       system: SYSTEM_INSTRUCTION,
       messages: coreMessages,
 
       tools: {
+        /* 🎨 IMAGE GENERATION (ADDED) */
+        generateImage: tool({
+          description: "Generate an image based on user prompt. Use this when user asks to 'draw', 'paint', 'create an image' or 'photo'.",
+          parameters: z.object({
+            prompt: z.string().describe("A detailed description of the image to generate"),
+          }),
+          execute: async ({ prompt }) => {
+            // Calling our separate logic file
+            const result = await generateImageWithGemini(prompt);
+            
+            if (result.success) {
+              return { 
+                imageUrl: result.imageUrl, 
+                status: "Image generated successfully" 
+              };
+            } else {
+              return { error: "Failed to generate image." };
+            }
+          },
+        }),
+
         /* 🛑 STOP MUSIC */
         stopMusic: tool({
           description: "Stop currently playing music. Use when user asks to stop.",
@@ -107,18 +126,15 @@ ${recalledMemories.map((m: string) => `• ${m}`).join("\n")}
           execute: async () => { return { status: "Stopped" }; },
         }),
 
-        /* 🎵 YOUTUBE (UPDATED FIX) */
+        /* 🎵 YOUTUBE */
         playYoutube: tool({
           description: "Play a YouTube video. REQUIRED for song requests.",
           parameters: z.object({ query: z.string() }),
           execute: async ({ query }) => {
             try {
-              // 🔥 Added 'videoEmbeddable=true' to prevent "Video Unavailable" error
               const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&key=${apiKey}`;
-              
               const res = await fetch(url);
               const data = await res.json();
-
               if (data?.items?.length) {
                 return { videoId: data.items[0].id.videoId };
               }

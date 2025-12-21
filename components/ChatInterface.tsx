@@ -4,7 +4,7 @@ import { useChat } from "ai/react";
 import { 
   Send, Mic, Paperclip, Phone, X, Trash2, 
   Briefcase, Heart, Music, MapPin, Calculator, Sparkles,
-  Mail, Calendar, CheckCircle, Square, Play
+  Mail, Calendar, CheckCircle, Square, Play, Download, Image as ImageIcon, Loader2
 } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion"; 
@@ -19,35 +19,8 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
       transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       className="relative w-60 h-60 rounded-full flex flex-col items-center justify-center bg-[#050505] border-[4px] border-purple-500/50 shadow-[0_0_60px_rgba(168,85,247,0.5),inset_0_0_40px_rgba(168,85,247,0.2)] overflow-hidden"
     >
-      {/* Glossy Reflection on Forehead */}
       <div className="absolute top-4 w-32 h-16 bg-white/5 rounded-[100%] blur-xl rotate-[-10deg]"></div>
-
-      {/* EYES CONTAINER */}
       <div className="flex gap-8 mb-2 z-10 items-center mt-4">
-        
-        {/* LEFT EYE (Complex Anime Style) */}
-        <div className="relative group">
-            <motion.div 
-              initial={{ scaleY: 1 }}
-              animate={{ scaleY: [1, 1, 0.1, 1, 1, 1] }} // Natural blink
-              transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.9, 0.92, 0.95, 0.98, 1] }}
-              className="w-16 h-20 bg-gradient-to-b from-[#00f2ff] via-[#008cff] to-[#001aff] rounded-[50%] border-[3px] border-white/10 shadow-[0_0_25px_rgba(0,242,255,0.4)] relative overflow-hidden"
-            >
-                {/* Pupil */}
-                <div className="absolute bottom-[-10%] left-[20%] w-[60%] h-[70%] bg-black/60 rounded-full blur-[2px]"></div>
-                
-                {/* Big Shine (Top Left) */}
-                <div className="absolute top-3 left-3 w-6 h-8 bg-white rounded-full opacity-95 rotate-[-20deg] blur-[0.5px] shadow-[0_0_10px_white]"></div>
-                
-                {/* Small Shine (Bottom Right) */}
-                <div className="absolute bottom-4 right-4 w-2 h-2 bg-white rounded-full opacity-80"></div>
-                
-                {/* Inner Glow */}
-                <div className="absolute bottom-0 w-full h-1/2 bg-gradient-to-t from-cyan-300/40 to-transparent"></div>
-            </motion.div>
-        </div>
-
-        {/* RIGHT EYE */}
         <div className="relative group">
             <motion.div 
               initial={{ scaleY: 1 }}
@@ -55,41 +28,38 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
               transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.9, 0.92, 0.95, 0.98, 1] }}
               className="w-16 h-20 bg-gradient-to-b from-[#00f2ff] via-[#008cff] to-[#001aff] rounded-[50%] border-[3px] border-white/10 shadow-[0_0_25px_rgba(0,242,255,0.4)] relative overflow-hidden"
             >
-                {/* Pupil */}
                 <div className="absolute bottom-[-10%] left-[20%] w-[60%] h-[70%] bg-black/60 rounded-full blur-[2px]"></div>
-                
-                {/* Big Shine */}
                 <div className="absolute top-3 left-3 w-6 h-8 bg-white rounded-full opacity-95 rotate-[-20deg] blur-[0.5px] shadow-[0_0_10px_white]"></div>
-                
-                {/* Small Shine */}
                 <div className="absolute bottom-4 right-4 w-2 h-2 bg-white rounded-full opacity-80"></div>
-
-                {/* Inner Glow */}
+                <div className="absolute bottom-0 w-full h-1/2 bg-gradient-to-t from-cyan-300/40 to-transparent"></div>
+            </motion.div>
+        </div>
+        <div className="relative group">
+            <motion.div 
+              initial={{ scaleY: 1 }}
+              animate={{ scaleY: [1, 1, 0.1, 1, 1, 1] }} 
+              transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.9, 0.92, 0.95, 0.98, 1] }}
+              className="w-16 h-20 bg-gradient-to-b from-[#00f2ff] via-[#008cff] to-[#001aff] rounded-[50%] border-[3px] border-white/10 shadow-[0_0_25px_rgba(0,242,255,0.4)] relative overflow-hidden"
+            >
+                <div className="absolute bottom-[-10%] left-[20%] w-[60%] h-[70%] bg-black/60 rounded-full blur-[2px]"></div>
+                <div className="absolute top-3 left-3 w-6 h-8 bg-white rounded-full opacity-95 rotate-[-20deg] blur-[0.5px] shadow-[0_0_10px_white]"></div>
+                <div className="absolute bottom-4 right-4 w-2 h-2 bg-white rounded-full opacity-80"></div>
                 <div className="absolute bottom-0 w-full h-1/2 bg-gradient-to-t from-cyan-300/40 to-transparent"></div>
             </motion.div>
         </div>
       </div>
-
-      {/* CHEEKS (Blush) */}
       <div className="absolute top-36 w-full flex justify-between px-12 z-0 opacity-80">
           <div className="w-10 h-6 bg-pink-500 blur-xl rounded-full"></div>
           <div className="w-10 h-6 bg-pink-500 blur-xl rounded-full"></div>
       </div>
-
-      {/* MOUTH (Small & Kawaii) */}
       <div className="h-8 flex items-center justify-center mt-2 z-20">
         {isSpeaking ? (
             <motion.div
-                animate={{ 
-                  height: [6, 14, 6], 
-                  width: [14, 18, 14],
-                  borderRadius: ["12px", "16px", "12px"]
-                }}
+                animate={{ height: [6, 14, 6], width: [14, 18, 14], borderRadius: ["12px", "16px", "12px"] }}
                 transition={{ duration: 0.25, repeat: Infinity, ease: "easeInOut" }}
                 className="bg-pink-200 shadow-[0_0_10px_rgba(244,114,182,0.6)]"
             />
         ) : (
-            // Tiny Smile
             <div className="w-4 h-2 bg-pink-300/80 rounded-b-full shadow-[0_0_5px_pink]"></div>
         )}
       </div>
@@ -98,7 +68,130 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
 };
 
 // ==========================================
-// 2. INVOICE TABLE
+// 2. IMAGE GENERATOR COMPONENT (FIXED & IMPROVED)
+// ==========================================
+const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
+  const { args, result } = toolInvocation;
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [isLoadingImage, setIsLoadingImage] = useState(true); // 🔥 New State for Image Loading
+
+  // 1. LOADING STATE (Generating...)
+  if (!result) {
+    return (
+      <div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-purple-500/30 p-4 animate-pulse">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="p-2 bg-purple-500/20 rounded-full">
+            <Sparkles size={18} className="text-purple-400 animate-spin-slow" />
+          </div>
+          <span className="text-sm font-bold text-purple-300">Amina is creating art...</span>
+        </div>
+        <div className="h-48 bg-gray-800/50 rounded-lg flex items-center justify-center border border-white/5">
+           <Loader2 size={32} className="text-purple-500 animate-spin" />
+        </div>
+        <div className="mt-2 text-xs text-gray-500 italic">"{args.prompt}"</div>
+      </div>
+    );
+  }
+
+  // 2. ERROR STATE
+  if (result.error) {
+    return (
+      <div className="mt-3 p-3 bg-red-900/20 border border-red-500/50 rounded-lg flex items-center gap-3">
+        <X className="text-red-400" size={18} />
+        <span className="text-sm text-red-200">Image generation failed. Try again.</span>
+      </div>
+    );
+  }
+
+  // 3. SUCCESS STATE
+  const imageUrl = result.imageUrl;
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation(); // Stop bubbling
+    try {
+        // 🔥 FORCE DOWNLOAD IN SAME TAB
+        const response = await fetch(imageUrl, { mode: 'cors' });
+        if (!response.ok) throw new Error("Network error");
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `amina_art_${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error("Download fallback:", error);
+        // Fallback to new tab only if absolutely necessary
+        window.open(imageUrl, '_blank');
+    }
+  };
+
+  if (!isExpanded) {
+    return (
+        <button onClick={() => setIsExpanded(true)} className="mt-2 flex items-center gap-2 px-4 py-2 bg-gray-800 rounded-full border border-purple-500/30 text-purple-300 text-xs hover:bg-gray-700 transition-all">
+            <ImageIcon size={14} /> View Generated Image
+        </button>
+    );
+  }
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="mt-4 w-full max-w-md bg-[#0a0a0a] rounded-2xl overflow-hidden border border-purple-500/40 shadow-2xl relative group"
+    >
+      <div className="absolute top-0 left-0 w-full p-3 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-start z-10">
+        <div className="flex items-center gap-2 px-2 py-1 bg-black/40 backdrop-blur-md rounded-full border border-white/10">
+            <Sparkles size={12} className="text-purple-400" />
+            <span className="text-[10px] font-bold text-white uppercase tracking-wide">AI Generated</span>
+        </div>
+        <button 
+            onClick={() => setIsExpanded(false)} 
+            className="p-1.5 bg-black/40 hover:bg-red-500/80 backdrop-blur-md rounded-full text-white/70 hover:text-white transition-all"
+        >
+            <X size={14} />
+        </button>
+      </div>
+
+      {/* 🔥 IMAGE DISPLAY FIX: Show loader until image is ready */}
+      <div className="relative aspect-square w-full bg-gray-900 flex items-center justify-center overflow-hidden">
+        {isLoadingImage && (
+            <div className="absolute inset-0 flex items-center justify-center z-0">
+                <Loader2 size={32} className="text-purple-500 animate-spin" />
+            </div>
+        )}
+        <img 
+            src={imageUrl} 
+            alt={args.prompt} 
+            className={`w-full h-full object-cover transition-opacity duration-500 relative z-10 ${isLoadingImage ? 'opacity-0' : 'opacity-100'}`}
+            onLoad={() => setIsLoadingImage(false)}
+            onError={() => setIsLoadingImage(false)}
+        />
+      </div>
+
+      <div className="p-4 bg-gray-900/90 border-t border-purple-500/20">
+        <p className="text-xs text-gray-400 italic mb-3 line-clamp-2">
+            "{args.prompt}"
+        </p>
+        <div className="flex gap-2">
+            <button 
+                onClick={handleDownload}
+                className="flex-1 flex items-center justify-center gap-2 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-white text-xs font-bold transition-all"
+            >
+                <Download size={14} /> Download High Res
+            </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+// ==========================================
+// 3. INVOICE TABLE
 // ==========================================
 const InvoiceTable = ({ data }: { data: any }) => {
   if (!data?.rows) return null;
@@ -141,7 +234,7 @@ const InvoiceTable = ({ data }: { data: any }) => {
 };
 
 // ==========================================
-// 3. MEDIA MANAGER
+// 4. MEDIA MANAGER
 // ==========================================
 
 const broadcastStop = (sourceId: string | null = null) => {
@@ -208,6 +301,9 @@ const StopAction = () => {
 
 const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
   const { toolName, args } = toolInvocation;
+  
+  if (toolName === 'generateImage') return <ImageGenerator toolInvocation={toolInvocation} />;
+  
   if (toolName === 'playYoutube') return <YouTubePlayer toolInvocation={toolInvocation} />;
   if (toolName === 'stopMusic') return <StopAction />;
   if (toolName === 'showMap') {
@@ -239,7 +335,7 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
 };
 
 // ==========================================
-// 4. MAIN CHAT INTERFACE
+// 5. MAIN CHAT INTERFACE
 // ==========================================
 export default function ChatInterface() {
   const [isAccountantMode, setIsAccountantMode] = useState(false);
