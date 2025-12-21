@@ -109,6 +109,7 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
 // ==========================================
 export default function ChatInterface() {
   const [isAccountantMode, setIsAccountantMode] = useState(false);
+  const [showCalculator, setShowCalculator] = useState(false); // 🔥 NEW: Calculator Toggle
   const [isCallActive, setIsCallActive] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false); 
@@ -136,21 +137,43 @@ export default function ChatInterface() {
   });
 
   const MAX_STORE_MESSAGES = 30;
-  useEffect(() => {
-    const saved = localStorage.getItem("amina_memory_v1");
-    if (saved) { try { const parsed = JSON.parse(saved); if (Array.isArray(parsed)) setMessages(parsed.slice(-MAX_STORE_MESSAGES)); } catch (e) {} }
-  }, []);
 
+  // 🔥 NEW MEMORY LOGIC: Separate Keys for Bestie & Accountant
+  const storageKey = isAccountantMode ? "amina_memory_accountant" : "amina_memory_bestie";
+
+  // LOAD MESSAGES (Switch Logic)
+  useEffect(() => {
+    const saved = localStorage.getItem(storageKey);
+    if (saved) { 
+        try { 
+            const parsed = JSON.parse(saved); 
+            if (Array.isArray(parsed)) setMessages(parsed.slice(-MAX_STORE_MESSAGES)); 
+        } catch (e) {} 
+    } else {
+        setMessages([]); // Agar naye mode me koi chat nahi hai, to clear karo
+    }
+  }, [isAccountantMode]); // Run whenever Mode changes
+
+  // SAVE MESSAGES (Dependent on current Mode)
   useEffect(() => {
     if (messages.length === 0) return;
     const toStore = messages.slice(-MAX_STORE_MESSAGES).map((m: any) => ({ 
         id: m.id, role: m.role, content: (typeof m.content === 'string' ? m.content : "Image"), toolInvocations: m.toolInvocations 
     }));
-    const id = setTimeout(() => { try { localStorage.setItem("amina_memory_v1", JSON.stringify(toStore)); } catch (e) {} }, 400);
+    const id = setTimeout(() => { 
+        try { localStorage.setItem(storageKey, JSON.stringify(toStore)); } catch (e) {} 
+    }, 400);
     return () => clearTimeout(id);
-  }, [messages, setMessages]);
+  }, [messages, storageKey]); // Depend on messages AND storageKey
 
-  const clearChat = () => { if (confirm("Delete memory?")) { localStorage.removeItem("amina_memory_v1"); setMessages([]); stopSpeaking(); } };
+  const clearChat = () => { 
+      if (confirm(`Delete ${isAccountantMode ? 'Accountant' : 'Personal'} memory?`)) { 
+          localStorage.removeItem(storageKey); 
+          setMessages([]); 
+          stopSpeaking(); 
+      } 
+  };
+
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const stopSpeaking = () => {
@@ -224,9 +247,7 @@ export default function ChatInterface() {
 
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) setSelectedImage(await resizeAndToDataUrl(e.target.files[0])); };
 
-  // 🔥 MANUAL VISION FETCH (The "Option A" Fix)
-  // This completely bypasses 'append' for images to guarantee stability
-// 🔥 CLEAN & SIMPLE SUBMIT HANDLER
+  // 🔥 CLEAN & SIMPLE SUBMIT HANDLER (Stable Vision Fix included)
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!input?.trim() && !selectedImage) || isLoading) return;
@@ -242,61 +263,34 @@ export default function ChatInterface() {
       // UI Update (Optimistic)
       const userMsgId = Date.now().toString();
       const newUserMsg = {
-          id: userMsgId,
-          role: 'user',
-          content: userMessage || "Analyze this image",
-          experimental_attachments: [{
-               name: "image.jpg", contentType: "image/jpeg", url: imageToSend 
-          }]
+          id: userMsgId, role: 'user', content: userMessage || "Analyze this image",
+          experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: imageToSend }]
       };
       setMessages(prev => [...prev, newUserMsg as any]);
 
       // Assistant Placeholder (Loading...)
       const assistantMsgId = (Date.now() + 1).toString();
-      setMessages(prev => [...prev, {
-          id: assistantMsgId, role: 'assistant', content: "👀 Looking at image..."
-      } as any]);
+      setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: "👀 Looking at image..." } as any]);
 
       try {
           // Fetch Simple JSON
           const res = await fetch("/api/vision", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    { type: "text", text: userMessage || "Analyze this image" },
-                    { type: "image", image: imageToSend },
-                  ],
-                },
-              ],
-            }),
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: userMessage || "Analyze this image" }, { type: "image", image: imageToSend }] }] }),
           });
 
-          const data = await res.json(); // 🔥 Simple JSON parse (No more reader/decoder)
-          
-          // Update the "Looking..." message with real text
-          setMessages(prev => prev.map(m => 
-            m.id === assistantMsgId 
-              ? { ...m, content: data.text } 
-              : m
-          ));
+          const data = await res.json(); 
+          setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: data.text } : m));
 
       } catch (err) {
           console.error("Vision Error:", err);
-          setMessages(prev => prev.map(m => 
-            m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m
-          ));
+          setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m));
       }
       return;
     }
 
     // CASE 2: NORMAL CHAT
-    await append({ 
-        role: "user", content: userMessage 
-    }, { body: { data: { isAccountantMode } } });
+    await append({ role: "user", content: userMessage }, { body: { data: { isAccountantMode } } });
   };
 
   // 🔥 SAFE RENDER CONTENT
@@ -310,36 +304,26 @@ export default function ChatInterface() {
   // 🔥 UNIVERSAL MESSAGE RENDERER
   const MessageContent = ({ message }: { message: any }) => {
     if (!message || !message.content) return null;
-
-    // A. Array Format (Vision)
     if (Array.isArray(message.content)) {
         return (
             <div className="flex flex-col gap-2">
                 {message.content.map((part: any, i: number) => {
-                    if (part.type === 'image' && part.image) {
-                        return <div key={i} className="rounded-lg overflow-hidden border border-white/20 my-2"><img src={part.image} className="w-full max-w-xs h-auto" /></div>;
-                    }
+                    if (part.type === 'image' && part.image) return <div key={i} className="rounded-lg overflow-hidden border border-white/20 my-2"><img src={part.image} className="w-full max-w-xs h-auto" /></div>;
                     if (part.type === 'text' && part.text) return <RenderContent key={i} text={part.text} />;
                     return null;
                 })}
             </div>
         );
     }
-
-    // B. Experimental Attachments (UI Safety)
     const hasAttachments = message.experimental_attachments && message.experimental_attachments.length > 0;
     if (hasAttachments) {
          return (
             <div className="flex flex-col gap-2">
-                <div className="rounded-lg overflow-hidden border border-white/20 my-2">
-                    <img src={message.experimental_attachments[0].url} className="w-full max-w-xs h-auto object-cover" />
-                </div>
+                <div className="rounded-lg overflow-hidden border border-white/20 my-2"><img src={message.experimental_attachments[0].url} className="w-full max-w-xs h-auto object-cover" /></div>
                 <RenderContent text={message.content} />
             </div>
          );
     }
-
-    // C. Normal Text
     return <RenderContent text={message.content} />;
   };
 
@@ -354,14 +338,34 @@ export default function ChatInterface() {
           <div className={`w-10 h-10 rounded-full overflow-hidden border-2 ${theme.border}`}><img src="/Amina_logo.png" className="w-full h-full object-cover" /></div>
           <div><h1 className={`font-bold text-lg text-transparent bg-clip-text bg-gradient-to-r ${theme.gradient}`}>{isAccountantMode ? "AMINA CPA" : "AMINA AI"}</h1><p className="text-[10px] text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Online</p></div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+            {/* 🔥 NEW: CALCULATOR TOGGLE (Only in Accountant Mode) */}
+            {isAccountantMode && (
+                <button onClick={() => setShowCalculator(!showCalculator)} className="p-2 bg-gray-800 text-green-400 rounded-full hover:bg-gray-700 transition-all border border-green-500/30">
+                    <Calculator size={20} />
+                </button>
+            )}
+
             <button onClick={() => setIsAccountantMode(!isAccountantMode)} className={`p-2 rounded-full ${isAccountantMode ? "bg-blue-600/20 text-blue-300" : "bg-purple-600/20 text-purple-300"}`}>{isAccountantMode ? <Briefcase size={20}/> : <Heart size={20}/>}</button>
             <button onClick={clearChat} className="p-2 bg-red-600/20 text-red-400 rounded-full"><Trash2 size={20} /></button>
             <button onClick={() => setIsCallActive(true)} className="p-2 bg-green-600/20 text-green-400 rounded-full"><Phone size={20} /></button>
         </div>
       </header>
+      
+      {/* 🔥 NEW: CALCULATOR WIDGET */}
+      <AnimatePresence>
+        {isAccountantMode && showCalculator && (
+            <motion.div initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 300, opacity: 0 }} className="fixed right-4 top-20 z-40 bg-gray-900 border border-gray-700 p-4 rounded-2xl shadow-2xl w-64">
+                <div className="flex justify-between items-center mb-2"><span className="text-sm font-bold text-green-400">Calculator</span><button onClick={() => setShowCalculator(false)}><X size={16} className="text-gray-500 hover:text-white" /></button></div>
+                {/* Embedded Scientific Calculator */}
+                <div className="h-64 bg-black rounded-lg flex items-center justify-center text-gray-500 text-xs overflow-hidden">
+                    <iframe src="https://www.desmos.com/scientific" width="100%" height="100%" style={{border:0}} />
+                </div>
+            </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* CALL OVERLAY */}
+      {/* CALL OVERLAY (UNCHANGED) */}
       <AnimatePresence>
       {isCallActive && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
