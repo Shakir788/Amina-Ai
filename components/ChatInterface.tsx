@@ -5,19 +5,20 @@ import {
   Send, Mic, Paperclip, Phone, X, Trash2, 
   Briefcase, Heart, Music, MapPin, Calculator, Sparkles,
   Mail, Calendar, CheckCircle, Square, Play, Download, 
-  Image as ImageIcon, Loader2, Gamepad2 // 👈 Added Gamepad2
+  Image as ImageIcon, Loader2, Gamepad2, 
+  Clock, CloudSun, Wind, Droplets, Thermometer // 👈 New Icons for Time/Weather
 } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import StressBuster from './StressBuster'; // 👈 Imported Game Component
+import StressBuster from './StressBuster'; 
 
 // ==========================================
-// 1. NEON ANIME AVATAR (HIGH QUALITY CSS)
+// 1. NEON ANIME AVATAR
 // ==========================================
 const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListening: boolean }) => {
   return (
     <motion.div 
-      animate={{ y: [0, -6, 0] }} // Very gentle float
+      animate={{ y: [0, -6, 0] }} 
       transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       className="relative w-60 h-60 rounded-full flex flex-col items-center justify-center bg-[#050505] border-[4px] border-purple-500/50 shadow-[0_0_60px_rgba(168,85,247,0.5),inset_0_0_40px_rgba(168,85,247,0.2)] overflow-hidden"
     >
@@ -70,14 +71,13 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
 };
 
 // ==========================================
-// 2. IMAGE GENERATOR COMPONENT (FIXED & IMPROVED)
+// 2. IMAGE GENERATOR COMPONENT
 // ==========================================
 const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   const { args, result } = toolInvocation;
   const [isExpanded, setIsExpanded] = useState(true);
   const [isLoadingImage, setIsLoadingImage] = useState(true);
 
-  // 1. LOADING STATE
   if (!result) {
     return (
       <div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-purple-500/30 p-4 animate-pulse">
@@ -95,7 +95,6 @@ const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
     );
   }
 
-  // 2. ERROR STATE
   if (result.error) {
     return (
       <div className="mt-3 p-3 bg-red-900/20 border border-red-500/50 rounded-lg flex items-center gap-3">
@@ -105,7 +104,6 @@ const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
     );
   }
 
-  // 3. SUCCESS STATE
   const imageUrl = result.imageUrl;
 
   const handleDownload = async (e: React.MouseEvent) => {
@@ -113,7 +111,6 @@ const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
     try {
         const response = await fetch(imageUrl, { mode: 'cors' });
         if (!response.ok) throw new Error("Network error");
-        
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -157,7 +154,7 @@ const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
 };
 
 // ==========================================
-// 3. INVOICE TABLE
+// 3. INVOICE TABLE & MEDIA MANAGER
 // ==========================================
 const InvoiceTable = ({ data }: { data: any }) => {
   if (!data?.rows) return null;
@@ -173,10 +170,6 @@ const InvoiceTable = ({ data }: { data: any }) => {
   );
 };
 
-// ==========================================
-// 4. MEDIA MANAGER
-// ==========================================
-
 const broadcastStop = (sourceId: string | null = null) => {
     if (typeof window !== 'undefined') {
         const action = sourceId ? 'stop_others' : 'stop_all';
@@ -189,7 +182,6 @@ const YouTubePlayer = ({ toolInvocation }: { toolInvocation: any }) => {
     const [isPlaying, setIsPlaying] = useState(true);
     const playerId = useRef(Math.random().toString(36).substr(2, 9)).current; 
     const { args, result } = toolInvocation;
-
     useEffect(() => {
         broadcastStop(playerId); 
         const handleSignal = (e: any) => {
@@ -200,77 +192,69 @@ const YouTubePlayer = ({ toolInvocation }: { toolInvocation: any }) => {
         window.addEventListener("AMINA_MEDIA_EVENT", handleSignal);
         return () => window.removeEventListener("AMINA_MEDIA_EVENT", handleSignal);
     }, []);
-
-    if (!isPlaying) return (
-        <div className="mt-2 p-2 px-3 rounded-lg bg-gray-800/50 border border-gray-700 flex items-center gap-2 opacity-50 w-fit">
-            <Square size={12} className="text-red-400" fill="currentColor"/> 
-            <span className="text-[10px] text-gray-500 uppercase tracking-wider">Session Ended</span>
-        </div>
-    );
-
+    if (!isPlaying) return (<div className="mt-2 p-2 px-3 rounded-lg bg-gray-800/50 border border-gray-700 flex items-center gap-2 opacity-50 w-fit"><Square size={12} className="text-red-400" fill="currentColor"/> <span className="text-[10px] text-gray-500 uppercase tracking-wider">Session Ended</span></div>);
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const videoId = result?.videoId;
-    const videoSrc = videoId 
-        ? `https://www.youtube.com/embed/${videoId}?autoplay=1&origin=${origin}` 
-        : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(args.query)}&origin=${origin}`;
-
-    return (
-        <div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-red-900/50 shadow-lg relative group animate-in zoom-in duration-300">
-            <div className="relative z-20 p-2 bg-red-900/20 text-red-400 text-xs flex items-center justify-between font-bold border-b border-red-900/30">
-                <div className="flex items-center gap-2"><Music size={14} /> Playing on YouTube</div>
-                <button 
-                    onClick={(e) => { e.stopPropagation(); setIsPlaying(false); }} 
-                    className="p-1.5 bg-red-500/20 hover:bg-red-500 text-red-200 hover:text-white rounded-full transition-all cursor-pointer z-50"
-                >
-                    <X size={14} strokeWidth={3} />
-                </button>
-            </div>
-            <iframe width="100%" height="220" src={videoSrc} title="YouTube" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full relative z-10" />
-        </div>
-    );
+    const videoSrc = videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&origin=${origin}` : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(args.query)}&origin=${origin}`;
+    return (<div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-red-900/50 shadow-lg relative group animate-in zoom-in duration-300"><div className="relative z-20 p-2 bg-red-900/20 text-red-400 text-xs flex items-center justify-between font-bold border-b border-red-900/30"><div className="flex items-center gap-2"><Music size={14} /> Playing on YouTube</div><button onClick={(e) => { e.stopPropagation(); setIsPlaying(false); }} className="p-1.5 bg-red-500/20 hover:bg-red-500 text-red-200 hover:text-white rounded-full transition-all cursor-pointer z-50"><X size={14} strokeWidth={3} /></button></div><iframe width="100%" height="220" src={videoSrc} title="YouTube" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full relative z-10" /></div>);
 };
 
-const StopAction = () => {
-    useEffect(() => { broadcastStop(null); }, []);
-    return (
-        <div className="mt-2 p-2 px-4 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold w-fit flex items-center gap-2 animate-pulse">
-            <Square size={10} fill="currentColor" /> Music Stopped
-        </div>
-    );
-};
+const StopAction = () => { useEffect(() => { broadcastStop(null); }, []); return (<div className="mt-2 p-2 px-4 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold w-fit flex items-center gap-2 animate-pulse"><Square size={10} fill="currentColor" /> Music Stopped</div>); };
 
+// ==========================================
+// 4. RENDER TOOLS (🔥 UPDATED TO SHOW TIME/WEATHER)
+// ==========================================
 const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
-  const { toolName, args } = toolInvocation;
+  const { toolName, args, result } = toolInvocation;
   
   if (toolName === 'generateImage') return <ImageGenerator toolInvocation={toolInvocation} />;
-  
   if (toolName === 'playYoutube') return <YouTubePlayer toolInvocation={toolInvocation} />;
   if (toolName === 'stopMusic') return <StopAction />;
+  
+  // 🔥 TIME CARD (New)
+  if (toolName === 'getCurrentTime') {
+      if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><Clock size={14}/> Checking time...</div>;
+      return (
+          <div className="mt-3 p-4 bg-gray-900 border border-gray-700 rounded-xl max-w-xs shadow-lg flex items-center gap-4">
+              <div className="p-3 bg-blue-900/30 rounded-full text-blue-400"><Clock size={24} /></div>
+              <div>
+                  <div className="text-2xl font-bold text-white">{result.time}</div>
+                  <div className="text-xs text-gray-400">{result.date}</div>
+                  <div className="text-[10px] text-blue-400 uppercase tracking-widest mt-1">📍 {result.location}</div>
+              </div>
+          </div>
+      );
+  }
+
+  // 🔥 WEATHER CARD (New)
+  if (toolName === 'getWeather') {
+      if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><CloudSun size={14}/> Checking weather...</div>;
+      if (result.error) return <div className="text-red-400 text-xs mt-2">Could not find weather.</div>;
+      
+      return (
+          <div className="mt-3 p-4 bg-gradient-to-br from-gray-900 to-blue-900/20 border border-blue-500/30 rounded-xl max-w-xs shadow-lg">
+              <div className="flex justify-between items-start mb-2">
+                  <div>
+                      <div className="text-3xl font-bold text-white">{result.temperature}</div>
+                      <div className="text-sm text-blue-200">{result.condition}</div>
+                  </div>
+                  <CloudSun size={32} className="text-yellow-400" />
+              </div>
+              <div className="flex gap-4 mt-3 pt-3 border-t border-white/10">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-300"><Droplets size={12} className="text-blue-400"/> {result.humidity}</div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-300"><Wind size={12} className="text-gray-400"/> {result.wind}</div>
+              </div>
+              <div className="text-[10px] text-right text-gray-500 mt-2 uppercase tracking-wider">📍 {result.location}</div>
+          </div>
+      );
+  }
+
   if (toolName === 'showMap') {
       const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`;
-      return (
-          <div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50">
-              <div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div>
-              <div className="h-48 bg-gray-800"><iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={mapSrc} allowFullScreen></iframe></div>
-          </div>
-      );
+      return (<div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50"><div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div><div className="h-48 bg-gray-800"><iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={mapSrc} allowFullScreen></iframe></div></div>);
   }
-  if (toolName === 'scheduleEvent') {
-      return (
-          <div className="mt-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg flex items-center gap-3">
-             <Calendar className="text-purple-400" />
-             <div><div className="text-xs text-purple-300 font-bold">Event Scheduled</div><div className="text-sm text-white">{args.title} on {args.date}</div></div><CheckCircle className="text-green-500 ml-auto" size={16} />
-          </div>
-      );
-  }
-  if (toolName === 'sendEmail') {
-      return (
-         <div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-blue-800/50 shadow-lg">
-             <div className="bg-blue-900/20 p-3 border-b border-blue-800/30 flex items-center gap-2"><div className="p-1.5 bg-blue-500 rounded-full"><Mail size={12} className="text-white" /></div><span className="text-sm font-bold text-blue-300">Email Draft</span></div>
-             <div className="p-4 text-sm space-y-3"><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">To:</span><span className="text-white font-medium">{args.to}</span></div><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">Sub:</span><span className="text-white">{args.subject}</span></div><div className="bg-black/30 p-3 rounded-lg text-gray-300 text-xs italic border-l-2 border-blue-500">"{args.body}"</div></div>
-         </div>
-      );
-  }
+  if (toolName === 'scheduleEvent') { return (<div className="mt-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg flex items-center gap-3"><Calendar className="text-purple-400" /><div><div className="text-xs text-purple-300 font-bold">Event Scheduled</div><div className="text-sm text-white">{args.title} on {args.date}</div></div><CheckCircle className="text-green-500 ml-auto" size={16} /></div>); }
+  if (toolName === 'sendEmail') { return (<div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-blue-800/50 shadow-lg"><div className="bg-blue-900/20 p-3 border-b border-blue-800/30 flex items-center gap-2"><div className="p-1.5 bg-blue-500 rounded-full"><Mail size={12} className="text-white" /></div><span className="text-sm font-bold text-blue-300">Email Draft</span></div><div className="p-4 text-sm space-y-3"><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">To:</span><span className="text-white font-medium">{args.to}</span></div><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">Sub:</span><span className="text-white">{args.subject}</span></div><div className="bg-black/30 p-3 rounded-lg text-gray-300 text-xs italic border-l-2 border-blue-500">"{args.body}"</div></div></div>); }
   return null;
 };
 
@@ -435,7 +419,7 @@ export default function ChatInterface() {
     await append({ role: "user", content: userMessage }, { body: { data: { isAccountantMode } } });
   };
 
-  // 🔥 RESTORED HELPERS 🔥
+  // 🔥 HELPERS 🔥
   const RenderContent = ({ text }: { text?: any }) => {
     if (!text || typeof text !== 'string') return null;
     const html = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br/>");
@@ -476,15 +460,9 @@ export default function ChatInterface() {
           <div><h1 className={`font-bold text-lg text-transparent bg-clip-text bg-gradient-to-r ${theme.gradient}`}>{isAccountantMode ? "AMINA CPA" : "AMINA AI"}</h1><p className="text-[10px] text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Online</p></div>
         </div>
         <div className="flex gap-2 items-center">
-            {/* 🔥 NEW GAME BUTTON 🔥 */}
-            <button 
-                onClick={() => setShowGame(true)} 
-                className="p-2 bg-pink-600/20 text-pink-400 rounded-full border border-pink-500/30 hover:bg-pink-600 hover:text-white transition-all"
-                title="Stress Buster Mode"
-            >
+            <button onClick={() => setShowGame(true)} className="p-2 bg-pink-600/20 text-pink-400 rounded-full border border-pink-500/30 hover:bg-pink-600 hover:text-white transition-all" title="Stress Buster Mode">
                 <Gamepad2 size={20} />
             </button>
-
             {isAccountantMode && (
                 <button onClick={() => setShowCalculator(!showCalculator)} className="p-2 bg-gray-800 text-green-400 rounded-full hover:bg-gray-700 transition-all border border-green-500/30">
                     <Calculator size={20} />
@@ -496,7 +474,6 @@ export default function ChatInterface() {
         </div>
       </header>
       
-      {/* CALCULATOR */}
       <AnimatePresence>
         {isAccountantMode && showCalculator && (
             <motion.div initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 300, opacity: 0 }} className="fixed right-4 top-20 z-40 bg-gray-900 border border-gray-700 p-4 rounded-2xl shadow-2xl w-64">
@@ -508,19 +485,16 @@ export default function ChatInterface() {
         )}
       </AnimatePresence>
 
-      {/* 🔥 CALL OVERLAY */}
       <AnimatePresence>
       {isCallActive && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
           <button onClick={() => { setIsCallActive(false); stopSpeaking(); }} className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700 z-50"><X size={24} /></button>
-          
           <div className="relative cursor-pointer" onClick={() => !isListening && startListening()}>
             <CuteAvatar isSpeaking={isSpeaking || isListening} isListening={isListening} />
             <div className="absolute inset-0 flex items-center justify-center z-20">
                {isSpeaking ? null : isListening ? (<div className="bg-green-500 p-3 rounded-full border-2 border-black animate-bounce shadow-lg"><Mic size={24} fill="white" /></div>) : null}
             </div>
           </div>
-
           <h2 className="mt-10 text-3xl font-bold text-white">{voiceGender === "female" ? "Amina" : "Mohammad"}</h2>
           <p className={`text-lg mt-2 font-medium ${theme.text}`}>{statusText || "Tap Avatar to Start"}</p>
           <div className="absolute bottom-12 flex items-center gap-3"><button onClick={() => setVoiceGender((v) => (v === "female" ? "male" : "female"))} className="px-6 py-3 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all">Switch Voice ({voiceGender})</button></div>
@@ -583,7 +557,6 @@ export default function ChatInterface() {
         </div>
       </footer>
 
-      {/* 🎮 STRESS BUSTER GAME OVERLAY */}
       <AnimatePresence>
         {showGame && (
             <StressBuster onClose={() => setShowGame(false)} />

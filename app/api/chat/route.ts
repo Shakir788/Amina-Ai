@@ -2,9 +2,9 @@ import { google } from '@ai-sdk/google';
 import { streamText, tool } from 'ai';
 import { z } from 'zod';
 import { remember, recall } from "@/app/lib/aminaMemory";
-import { generateImageWithGemini } from "@/app/lib/imageGen"; // 👈 New Import
+import { generateImageWithGemini } from "@/app/lib/imageGen";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 /* ---------------- HELPERS ---------------- */
 
@@ -23,6 +23,18 @@ function shouldRemember(text: string) {
   ].some(w => t.includes(w));
 }
 
+// Helper to decode Weather codes
+function getWeatherCondition(code: number) {
+    if (code === 0) return "Clear Sky ☀️";
+    if (code >= 1 && code <= 3) return "Partly Cloudy ⛅";
+    if (code >= 45 && code <= 48) return "Foggy 🌫️";
+    if (code >= 51 && code <= 55) return "Drizzle 🌧️";
+    if (code >= 61 && code <= 67) return "Rainy ☔";
+    if (code >= 71 && code <= 77) return "Snowy ❄️";
+    if (code >= 95) return "Thunderstorm ⛈️";
+    return "Cloudy ☁️";
+}
+
 /* --------------- ROUTE ------------------- */
 
 export async function POST(req: Request) {
@@ -31,7 +43,6 @@ export async function POST(req: Request) {
     const isAccountantMode = data?.isAccountantMode || false;
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
-    /* -------- MESSAGE SANITIZER -------- */
     const coreMessages = messages.filter((m: any) => {
         if (m.toolInvocations || m.role === 'tool') return true;
         if (Array.isArray(m.content)) return true;
@@ -67,14 +78,16 @@ CORE BEHAVIOUR:
 - Calm, warm, confident.
 - Light humour only when natural.
 
-🎵 MUSIC RULES (VERY IMPORTANT):
-1. If user says "Play song", "Music", "Sunao", etc. -> **YOU MUST EXECUTE THE 'playYoutube' TOOL**.
-2. **DO NOT** just say "Playing now" without using the tool. That is fake.
-3. If user says "Stop", "Chup", "Band karo" -> **USE 'stopMusic' TOOL**.
+🌍 REAL-TIME TOOLS (NEW):
+1. If user asks "Time kya hai?", "Date?", "What time is it in London?" -> **USE 'getCurrentTime'**.
+2. If user asks "Weather?", "Barish ho rahi hai?", "Temperature in Paris?" -> **USE 'getWeather'**.
 
-🎨 IMAGE GENERATION RULES:
-1. If user says "Draw", "Generate image", "Paint", "Photo of..." -> **USE 'generateImage' TOOL**.
-2. Create a detailed prompt for the image generator based on what the user asked.
+🎵 MUSIC RULES:
+1. If user says "Play song", "Music", "Sunao", etc. -> **USE 'playYoutube'**.
+2. If user says "Stop", "Chup", "Band karo" -> **USE 'stopMusic'**.
+
+🎨 IMAGE GENERATION:
+1. If user says "Draw", "Generate image", "Paint" -> **USE 'generateImage'**.
 
 VISION:
 ${imagePresent ? "⚠️ USER SENT AN IMAGE. Analyze it immediately." : ""}
@@ -93,66 +106,105 @@ ${recalledMemories.map((m: string) => `• ${m}`).join("\n")}
     /* ---------------- STREAM ---------------- */
 
     const result = await streamText({
-      model: google("gemini-2.5-pro"), // ✅ Using your requested model
+      model: google("gemini-2.5-pro"), // ✅ Ye lo bhai, tumhara favorite model!
       system: SYSTEM_INSTRUCTION,
       messages: coreMessages,
 
       tools: {
-        /* 🎨 IMAGE GENERATION (ADDED) */
-        generateImage: tool({
-          description: "Generate an image based on user prompt. Use this when user asks to 'draw', 'paint', 'create an image' or 'photo'.",
-          parameters: z.object({
-            prompt: z.string().describe("A detailed description of the image to generate"),
-          }),
-          execute: async ({ prompt }) => {
-            // Calling our separate logic file
-            const result = await generateImageWithGemini(prompt);
-            
-            if (result.success) {
-              return { 
-                imageUrl: result.imageUrl, 
-                status: "Image generated successfully" 
+        /* ⏰ CURRENT TIME (Added) */
+        getCurrentTime: tool({
+            description: 'Get the current time and date of a specific location',
+            parameters: z.object({
+              location: z.string().optional().describe('The location (e.g. India, London).'),
+            }),
+            execute: async ({ location }) => {
+              const now = new Date();
+              let timeZone = 'Asia/Kolkata'; // Default Mohammad
+              const loc = location?.toLowerCase() || '';
+              
+              if (loc.includes('morocco') || loc.includes('casablanca') || loc.includes('douaa')) timeZone = 'Africa/Casablanca';
+              else if (loc.includes('london') || loc.includes('uk')) timeZone = 'Europe/London';
+              else if (loc.includes('new york') || loc.includes('usa')) timeZone = 'America/New_York';
+              else if (loc.includes('dubai')) timeZone = 'Asia/Dubai';
+              
+              return {
+                time: now.toLocaleTimeString('en-US', { timeZone }),
+                date: now.toLocaleDateString('en-US', { timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+                location: location || (timeZone === 'Asia/Kolkata' ? 'India' : 'Morocco'),
+                timeZone
               };
-            } else {
-              return { error: "Failed to generate image." };
-            }
+            },
+        }),
+
+        /* 🌦️ REAL-TIME WEATHER (Added) */
+        getWeather: tool({
+            description: 'Get the current live weather for any city',
+            parameters: z.object({
+              city: z.string().describe('The city name (e.g. Mumbai, Casablanca)'),
+            }),
+            execute: async ({ city }) => {
+              try {
+                const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`);
+                const geoData = await geoRes.json();
+                if (!geoData.results) return { error: "City not found" };
+                const { latitude, longitude, name, country } = geoData.results[0];
+
+                const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&timezone=auto`);
+                const weatherData = await weatherRes.json();
+                
+                return {
+                  location: `${name}, ${country}`,
+                  temperature: `${weatherData.current.temperature_2m}°C`,
+                  condition: getWeatherCondition(weatherData.current.weather_code),
+                  humidity: `${weatherData.current.relative_humidity_2m}%`,
+                  wind: `${weatherData.current.wind_speed_10m} km/h`
+                };
+              } catch (e) {
+                return { error: "Could not fetch weather." };
+              }
+            },
+        }),
+
+        /* 🎨 IMAGE GENERATION (No Change) */
+        generateImage: tool({
+          description: "Generate an image based on user prompt.",
+          parameters: z.object({ prompt: z.string() }),
+          execute: async ({ prompt }) => {
+            const result = await generateImageWithGemini(prompt);
+            return result.success ? { imageUrl: result.imageUrl, status: "Success" } : { error: "Failed" };
           },
         }),
 
-        /* 🛑 STOP MUSIC */
+        /* 🛑 STOP MUSIC (No Change) */
         stopMusic: tool({
-          description: "Stop currently playing music. Use when user asks to stop.",
+          description: "Stop currently playing music.",
           parameters: z.object({}),
           execute: async () => { return { status: "Stopped" }; },
         }),
 
-        /* 🎵 YOUTUBE */
+        /* 🎵 YOUTUBE (No Change) */
         playYoutube: tool({
-          description: "Play a YouTube video. REQUIRED for song requests.",
+          description: "Play a YouTube video.",
           parameters: z.object({ query: z.string() }),
           execute: async ({ query }) => {
             try {
               const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&key=${apiKey}`;
               const res = await fetch(url);
               const data = await res.json();
-              if (data?.items?.length) {
-                return { videoId: data.items[0].id.videoId };
-              }
+              if (data?.items?.length) return { videoId: data.items[0].id.videoId };
               return { status: "Not found" };
-            } catch {
-              return { status: "YouTube error" };
-            }
+            } catch { return { status: "YouTube error" }; }
           },
         }),
 
-        /* 🗺️ MAPS */
+        /* 🗺️ MAPS (No Change) */
         showMap: tool({
           description: "Show a location on map",
           parameters: z.object({ location: z.string() }),
           execute: async ({ location }) => { return { location }; },
         }),
 
-        /* 💱 CURRENCY */
+        /* 💱 CURRENCY (No Change) */
         convertCurrency: tool({
           description: "Convert currency",
           parameters: z.object({ amount: z.number(), from: z.string(), to: z.string() }),
@@ -164,7 +216,7 @@ ${recalledMemories.map((m: string) => `• ${m}`).join("\n")}
           },
         }),
 
-        /* 🧮 CALCULATOR */
+        /* 🧮 CALCULATOR (No Change) */
         calculate: tool({
           description: "Evaluate math expression",
           parameters: z.object({ expression: z.string() }),
