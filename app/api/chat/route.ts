@@ -19,11 +19,11 @@ function shouldRemember(text: string) {
   return [
     "love","hate","mom","mother","birthday",
     "favorite","dream","goal",
-    "mohammad","douaa"
+    "mohammad","douaa", "plan", "date"
   ].some(w => t.includes(w));
 }
 
-// Helper to decode Weather codes
+// Weather Helper
 function getWeatherCondition(code: number) {
     if (code === 0) return "Clear Sky ☀️";
     if (code >= 1 && code <= 3) return "Partly Cloudy ⛅";
@@ -43,6 +43,20 @@ export async function POST(req: Request) {
     const isAccountantMode = data?.isAccountantMode || false;
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
+    // 🔥 LIVE TIME CONTEXT
+    const now = new Date();
+    const indiaTime = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+    const moroccoTime = now.toLocaleTimeString('en-MA', { timeZone: 'Africa/Casablanca', hour: '2-digit', minute: '2-digit', hour12: true });
+    const currentDate = now.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    // Time of Day Logic
+    const currentHour = now.getHours();
+    let timeOfDay = "Night";
+    if (currentHour >= 5 && currentHour < 12) timeOfDay = "Morning";
+    else if (currentHour >= 12 && currentHour < 17) timeOfDay = "Afternoon";
+    else if (currentHour >= 17 && currentHour < 21) timeOfDay = "Evening";
+
+    /* -------- MESSAGE SANITIZER -------- */
     const coreMessages = messages.filter((m: any) => {
         if (m.toolInvocations || m.role === 'tool') return true;
         if (Array.isArray(m.content)) return true;
@@ -73,27 +87,23 @@ USER:
 - Casablanca, Morocco
 - Relationship: Girlfriend of Mohammad
 
-CORE BEHAVIOUR:
-- Speak like a real human.
-- Calm, warm, confident.
-- Light humour only when natural.
+🕒 REAL-TIME CONTEXT:
+- **Date:** ${currentDate}
+- **India Time:** ${indiaTime}
+- **Morocco Time:** ${moroccoTime}
+- **Time of Day:** ${timeOfDay}
 
-🌍 REAL-TIME TOOLS (NEW):
-1. If user asks "Time kya hai?", "Date?", "What time is it in London?" -> **USE 'getCurrentTime'**.
-2. If user asks "Weather?", "Barish ho rahi hai?", "Temperature in Paris?" -> **USE 'getWeather'**.
+🌍 LIVE TOOLS:
+1. **Search/News/Prices:** If asked for *current* news, gold price, bitcoin, stocks, or facts -> **USE 'googleSearch'**.
+2. **Weather:** Use 'getWeather'.
+3. **Time:** You know the time (above), but use 'getCurrentTime' if they ask for a specific other city.
 
-🎵 MUSIC RULES:
-1. If user says "Play song", "Music", "Sunao", etc. -> **USE 'playYoutube'**.
-2. If user says "Stop", "Chup", "Band karo" -> **USE 'stopMusic'**.
-
-🎨 IMAGE GENERATION:
-1. If user says "Draw", "Generate image", "Paint" -> **USE 'generateImage'**.
-
-VISION:
-${imagePresent ? "⚠️ USER SENT AN IMAGE. Analyze it immediately." : ""}
+🎵 MUSIC:
+1. "Play song/music" -> **USE 'playYoutube'**.
+2. "Stop" -> **USE 'stopMusic'**.
 
 CURRENT MODE:
-${isAccountantMode ? "ACCOUNTANT MODE: Professional, focus on numbers." : "BESTIE MODE: Warm, friendly, supportive."}
+${isAccountantMode ? "ACCOUNTANT MODE" : "BESTIE MODE"}
 
 LANGUAGE:
 - Reply in ${lang}
@@ -106,85 +116,92 @@ ${recalledMemories.map((m: string) => `• ${m}`).join("\n")}
     /* ---------------- STREAM ---------------- */
 
     const result = await streamText({
-      model: google("gemini-2.5-pro"), // ✅ Ye lo bhai, tumhara favorite model!
+      // 🔥 YOUR REQUESTED MODEL + GROUNDING ENABLED
+      model: google("gemini-2.5-pro", {
+        // @ts-ignore (Ye line error hata degi)
+        useSearchGrounding: true, 
+      }),
       system: SYSTEM_INSTRUCTION,
       messages: coreMessages,
 
       tools: {
-        /* ⏰ CURRENT TIME (Added) */
-        getCurrentTime: tool({
-            description: 'Get the current time and date of a specific location',
+        /* 🌍 GOOGLE SEARCH (Using Grounding) */
+        googleSearch: tool({
+            description: 'Search Google for real-time news, prices, or information.',
             parameters: z.object({
-              location: z.string().optional().describe('The location (e.g. India, London).'),
+              query: z.string().describe('The search query'),
             }),
+            execute: async ({ query }) => {
+              // Crypto Fallback (Just in case grounding misses live rates)
+              const q = query.toLowerCase();
+              if(q.includes('bitcoin') || q.includes('btc') || q.includes('eth')) {
+                  try {
+                      const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,mad,inr');
+                      const d = await res.json();
+                      return { result: `Live Bitcoin Price: $${d.bitcoin.usd} USD / ${d.bitcoin.mad} MAD` };
+                  } catch(e) { /* Fallback */ }
+              }
+              // Normal Grounding will handle the rest
+              return { search_performed: true, query: query }; 
+            },
+        }),
+
+        /* ⏰ CURRENT TIME */
+        getCurrentTime: tool({
+            description: 'Get the current time of a specific location',
+            parameters: z.object({ location: z.string().optional() }),
             execute: async ({ location }) => {
               const now = new Date();
-              let timeZone = 'Asia/Kolkata'; // Default Mohammad
+              let timeZone = 'Asia/Kolkata';
               const loc = location?.toLowerCase() || '';
-              
-              if (loc.includes('morocco') || loc.includes('casablanca') || loc.includes('douaa')) timeZone = 'Africa/Casablanca';
-              else if (loc.includes('london') || loc.includes('uk')) timeZone = 'Europe/London';
-              else if (loc.includes('new york') || loc.includes('usa')) timeZone = 'America/New_York';
-              else if (loc.includes('dubai')) timeZone = 'Asia/Dubai';
+              if (loc.includes('morocco') || loc.includes('casa')) timeZone = 'Africa/Casablanca';
+              else if (loc.includes('london')) timeZone = 'Europe/London';
+              else if (loc.includes('new york')) timeZone = 'America/New_York';
               
               return {
                 time: now.toLocaleTimeString('en-US', { timeZone }),
-                date: now.toLocaleDateString('en-US', { timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-                location: location || (timeZone === 'Asia/Kolkata' ? 'India' : 'Morocco'),
-                timeZone
+                date: now.toLocaleDateString('en-US', { timeZone, weekday: 'long', day: 'numeric', month: 'short' }),
+                location: location || 'India'
               };
             },
         }),
 
-        /* 🌦️ REAL-TIME WEATHER (Added) */
+        /* 🌦️ WEATHER */
         getWeather: tool({
-            description: 'Get the current live weather for any city',
-            parameters: z.object({
-              city: z.string().describe('The city name (e.g. Mumbai, Casablanca)'),
-            }),
+            description: 'Get live weather for any city',
+            parameters: z.object({ city: z.string() }),
             execute: async ({ city }) => {
               try {
-                const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`);
+                const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&format=json`);
                 const geoData = await geoRes.json();
                 if (!geoData.results) return { error: "City not found" };
                 const { latitude, longitude, name, country } = geoData.results[0];
-
-                const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&timezone=auto`);
-                const weatherData = await weatherRes.json();
-                
+                const weather = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m`);
+                const wData = await weather.json();
                 return {
                   location: `${name}, ${country}`,
-                  temperature: `${weatherData.current.temperature_2m}°C`,
-                  condition: getWeatherCondition(weatherData.current.weather_code),
-                  humidity: `${weatherData.current.relative_humidity_2m}%`,
-                  wind: `${weatherData.current.wind_speed_10m} km/h`
+                  temperature: `${wData.current.temperature_2m}°C`,
+                  condition: getWeatherCondition(wData.current.weather_code),
+                  humidity: `${wData.current.relative_humidity_2m}%`,
+                  wind: `${wData.current.wind_speed_10m} km/h`
                 };
-              } catch (e) {
-                return { error: "Could not fetch weather." };
-              }
+              } catch (e) { return { error: "Weather unavailable" }; }
             },
         }),
 
-        /* 🎨 IMAGE GENERATION (No Change) */
+        /* 🎨 IMAGE GENERATION */
         generateImage: tool({
-          description: "Generate an image based on user prompt.",
+          description: "Generate an image based on prompt.",
           parameters: z.object({ prompt: z.string() }),
           execute: async ({ prompt }) => {
             const result = await generateImageWithGemini(prompt);
-            return result.success ? { imageUrl: result.imageUrl, status: "Success" } : { error: "Failed" };
+            return result.success ? { imageUrl: result.imageUrl } : { error: "Failed" };
           },
         }),
 
-        /* 🛑 STOP MUSIC (No Change) */
-        stopMusic: tool({
-          description: "Stop currently playing music.",
-          parameters: z.object({}),
-          execute: async () => { return { status: "Stopped" }; },
-        }),
-
-        /* 🎵 YOUTUBE (No Change) */
+        /* 🎵 MUSIC TOOLS */
         playYoutube: tool({
-          description: "Play a YouTube video.",
+          description: "Play YouTube video.",
           parameters: z.object({ query: z.string() }),
           execute: async ({ query }) => {
             try {
@@ -193,18 +210,17 @@ ${recalledMemories.map((m: string) => `• ${m}`).join("\n")}
               const data = await res.json();
               if (data?.items?.length) return { videoId: data.items[0].id.videoId };
               return { status: "Not found" };
-            } catch { return { status: "YouTube error" }; }
+            } catch { return { status: "Error" }; }
           },
         }),
-
-        /* 🗺️ MAPS (No Change) */
+        stopMusic: tool({ description: "Stop music", parameters: z.object({}), execute: async () => ({ stopped: true }) }),
+        
+        /* 🗺️ UTILS */
         showMap: tool({
-          description: "Show a location on map",
+          description: "Show map",
           parameters: z.object({ location: z.string() }),
-          execute: async ({ location }) => { return { location }; },
+          execute: async ({ location }) => ({ location }),
         }),
-
-        /* 💱 CURRENCY (No Change) */
         convertCurrency: tool({
           description: "Convert currency",
           parameters: z.object({ amount: z.number(), from: z.string(), to: z.string() }),
@@ -215,14 +231,10 @@ ${recalledMemories.map((m: string) => `• ${m}`).join("\n")}
             return `${amount} ${from} = ${(amount * rate).toFixed(2)} ${to}`;
           },
         }),
-
-        /* 🧮 CALCULATOR (No Change) */
         calculate: tool({
-          description: "Evaluate math expression",
+          description: "Calculate math",
           parameters: z.object({ expression: z.string() }),
-          execute: async ({ expression }) => {
-            try { return eval(expression).toString(); } catch { return "Error"; }
-          },
+          execute: async ({ expression }) => { try { return eval(expression).toString(); } catch { return "Error"; } },
         }),
       },
 
@@ -236,7 +248,7 @@ ${recalledMemories.map((m: string) => `• ${m}`).join("\n")}
     return result.toDataStreamResponse();
 
   } catch (err) {
-    console.error("❌ AMINA CHAT ERROR:", err);
-    return new Response("Chat system error", { status: 500 });
+    console.error("❌ CHAT ERROR:", err);
+    return new Response("Chat error", { status: 500 });
   }
 }

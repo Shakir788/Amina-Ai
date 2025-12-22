@@ -6,7 +6,7 @@ import {
   Briefcase, Heart, Music, MapPin, Calculator, Sparkles,
   Mail, Calendar, CheckCircle, Square, Play, Download, 
   Image as ImageIcon, Loader2, Gamepad2, 
-  Clock, CloudSun, Wind, Droplets, Thermometer // 👈 New Icons for Time/Weather
+  Clock, CloudSun, Wind, Droplets, Globe, Search // 👈 New Icons
 } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -202,7 +202,7 @@ const YouTubePlayer = ({ toolInvocation }: { toolInvocation: any }) => {
 const StopAction = () => { useEffect(() => { broadcastStop(null); }, []); return (<div className="mt-2 p-2 px-4 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold w-fit flex items-center gap-2 animate-pulse"><Square size={10} fill="currentColor" /> Music Stopped</div>); };
 
 // ==========================================
-// 4. RENDER TOOLS (🔥 UPDATED TO SHOW TIME/WEATHER)
+// 4. RENDER TOOLS (🔥 UPDATED TO SHOW TIME/WEATHER/NEWS)
 // ==========================================
 const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
   const { toolName, args, result } = toolInvocation;
@@ -211,7 +211,17 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
   if (toolName === 'playYoutube') return <YouTubePlayer toolInvocation={toolInvocation} />;
   if (toolName === 'stopMusic') return <StopAction />;
   
-  // 🔥 TIME CARD (New)
+  // 🔥 SEARCH CARD (Fix for Blank News)
+  if (toolName === 'googleSearch') {
+      return (
+          <div className="mt-2 flex items-center gap-2 text-xs text-gray-400 bg-gray-900/50 p-2 rounded-lg border border-gray-800 w-fit animate-in fade-in">
+              <Search size={12} className="text-green-400" /> 
+              <span>Searching Google for: <span className="text-white font-medium">{args.query}</span>...</span>
+          </div>
+      );
+  }
+
+  // 🔥 TIME CARD
   if (toolName === 'getCurrentTime') {
       if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><Clock size={14}/> Checking time...</div>;
       return (
@@ -226,7 +236,7 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
       );
   }
 
-  // 🔥 WEATHER CARD (New)
+  // 🔥 WEATHER CARD
   if (toolName === 'getWeather') {
       if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><CloudSun size={14}/> Checking weather...</div>;
       if (result.error) return <div className="text-red-400 text-xs mt-2">Could not find weather.</div>;
@@ -287,6 +297,7 @@ export default function ChatInterface() {
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages, setInput } = useChat({
     api: "/api/chat",
     body: { data: { isAccountantMode } },
+    maxSteps: 5, // 🔥 CRITICAL FIX: Allows AI to search AND reply!
     onError: (err) => console.error("Chat Error:", err),
   });
 
