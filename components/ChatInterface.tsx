@@ -4,10 +4,12 @@ import { useChat } from "ai/react";
 import { 
   Send, Mic, Paperclip, Phone, X, Trash2, 
   Briefcase, Heart, Music, MapPin, Calculator, Sparkles,
-  Mail, Calendar, CheckCircle, Square, Play, Download, Image as ImageIcon, Loader2
+  Mail, Calendar, CheckCircle, Square, Play, Download, 
+  Image as ImageIcon, Loader2, Gamepad2 // 👈 Added Gamepad2
 } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
-import { motion, AnimatePresence } from "framer-motion"; 
+import { motion, AnimatePresence } from "framer-motion";
+import StressBuster from './StressBuster'; // 👈 Imported Game Component
 
 // ==========================================
 // 1. NEON ANIME AVATAR (HIGH QUALITY CSS)
@@ -73,9 +75,9 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
 const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   const { args, result } = toolInvocation;
   const [isExpanded, setIsExpanded] = useState(true);
-  const [isLoadingImage, setIsLoadingImage] = useState(true); // 🔥 New State for Image Loading
+  const [isLoadingImage, setIsLoadingImage] = useState(true);
 
-  // 1. LOADING STATE (Generating...)
+  // 1. LOADING STATE
   if (!result) {
     return (
       <div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-purple-500/30 p-4 animate-pulse">
@@ -107,25 +109,19 @@ const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   const imageUrl = result.imageUrl;
 
   const handleDownload = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation(); // Stop bubbling
+    e.preventDefault(); e.stopPropagation();
     try {
-        // 🔥 FORCE DOWNLOAD IN SAME TAB
         const response = await fetch(imageUrl, { mode: 'cors' });
         if (!response.ok) throw new Error("Network error");
         
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = url;
-        link.download = `amina_art_${Date.now()}.jpg`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
+        link.href = url; link.download = `amina_art_${Date.now()}.jpg`;
+        document.body.appendChild(link); link.click();
+        document.body.removeChild(link); window.URL.revokeObjectURL(url);
     } catch (error) {
         console.error("Download fallback:", error);
-        // Fallback to new tab only if absolutely necessary
         window.open(imageUrl, '_blank');
     }
   };
@@ -139,51 +135,21 @@ const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   }
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="mt-4 w-full max-w-md bg-[#0a0a0a] rounded-2xl overflow-hidden border border-purple-500/40 shadow-2xl relative group"
-    >
+    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="mt-4 w-full max-w-md bg-[#0a0a0a] rounded-2xl overflow-hidden border border-purple-500/40 shadow-2xl relative group">
       <div className="absolute top-0 left-0 w-full p-3 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-start z-10">
         <div className="flex items-center gap-2 px-2 py-1 bg-black/40 backdrop-blur-md rounded-full border border-white/10">
-            <Sparkles size={12} className="text-purple-400" />
-            <span className="text-[10px] font-bold text-white uppercase tracking-wide">AI Generated</span>
+            <Sparkles size={12} className="text-purple-400" /> <span className="text-[10px] font-bold text-white uppercase tracking-wide">AI Generated</span>
         </div>
-        <button 
-            onClick={() => setIsExpanded(false)} 
-            className="p-1.5 bg-black/40 hover:bg-red-500/80 backdrop-blur-md rounded-full text-white/70 hover:text-white transition-all"
-        >
-            <X size={14} />
-        </button>
+        <button onClick={() => setIsExpanded(false)} className="p-1.5 bg-black/40 hover:bg-red-500/80 backdrop-blur-md rounded-full text-white/70 hover:text-white transition-all"><X size={14} /></button>
       </div>
-
-      {/* 🔥 IMAGE DISPLAY FIX: Show loader until image is ready */}
       <div className="relative aspect-square w-full bg-gray-900 flex items-center justify-center overflow-hidden">
-        {isLoadingImage && (
-            <div className="absolute inset-0 flex items-center justify-center z-0">
-                <Loader2 size={32} className="text-purple-500 animate-spin" />
-            </div>
-        )}
-        <img 
-            src={imageUrl} 
-            alt={args.prompt} 
-            className={`w-full h-full object-cover transition-opacity duration-500 relative z-10 ${isLoadingImage ? 'opacity-0' : 'opacity-100'}`}
-            onLoad={() => setIsLoadingImage(false)}
-            onError={() => setIsLoadingImage(false)}
-        />
+        {isLoadingImage && (<div className="absolute inset-0 flex items-center justify-center z-0"><Loader2 size={32} className="text-purple-500 animate-spin" /></div>)}
+        <img src={imageUrl} alt={args.prompt} className={`w-full h-full object-cover transition-opacity duration-500 relative z-10 ${isLoadingImage ? 'opacity-0' : 'opacity-100'}`} onLoad={() => setIsLoadingImage(false)} onError={() => setIsLoadingImage(false)} />
       </div>
-
       <div className="p-4 bg-gray-900/90 border-t border-purple-500/20">
-        <p className="text-xs text-gray-400 italic mb-3 line-clamp-2">
-            "{args.prompt}"
-        </p>
+        <p className="text-xs text-gray-400 italic mb-3 line-clamp-2">"{args.prompt}"</p>
         <div className="flex gap-2">
-            <button 
-                onClick={handleDownload}
-                className="flex-1 flex items-center justify-center gap-2 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-white text-xs font-bold transition-all"
-            >
-                <Download size={14} /> Download High Res
-            </button>
+            <button onClick={handleDownload} className="flex-1 flex items-center justify-center gap-2 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-white text-xs font-bold transition-all"><Download size={14} /> Download High Res</button>
         </div>
       </div>
     </motion.div>
@@ -201,34 +167,8 @@ const InvoiceTable = ({ data }: { data: any }) => {
         <div className="flex items-center gap-2 text-blue-400"><Briefcase size={16} /><span className="font-bold text-sm">Amina CPA Report</span></div>
         <span className="text-xs text-gray-500">{data.summary.rowCount} Items Found</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="text-xs text-gray-400 uppercase bg-gray-800/50">
-            <tr>
-              <th className="px-4 py-3">Item</th>
-              <th className="px-4 py-3 text-right">Qty</th>
-              <th className="px-4 py-3 text-right">Price</th>
-              <th className="px-4 py-3 text-right">Tax</th>
-              <th className="px-4 py-3 text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-800">
-            {data.rows.map((row: any, i: number) => (
-              <tr key={i} className="hover:bg-gray-800/30 transition-colors">
-                <td className="px-4 py-3 font-medium text-white">{row.item}</td>
-                <td className="px-4 py-3 text-right text-gray-400">{row.qty}</td>
-                <td className="px-4 py-3 text-right text-gray-300">{row.price.toFixed(2)}</td>
-                <td className="px-4 py-3 text-right text-red-300 text-xs">{row.tax > 0 ? `+${row.tax.toFixed(2)}` : '-'}</td>
-                <td className="px-4 py-3 text-right font-bold text-green-400">{row.computedTotal.toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="bg-gray-800/80 px-4 py-3 border-t border-gray-700 flex flex-col gap-1 items-end">
-        <div className="flex justify-between w-40 text-xs text-gray-400"><span>Total Tax:</span><span>{data.summary.totalTax.toFixed(2)}</span></div>
-        <div className="flex justify-between w-40 text-lg font-bold text-white"><span>Grand Total:</span><span className="text-green-400">{data.summary.grandTotal.toFixed(2)} MAD</span></div>
-      </div>
+      <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-xs text-gray-400 uppercase bg-gray-800/50"><tr><th className="px-4 py-3">Item</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3 text-right">Price</th><th className="px-4 py-3 text-right">Tax</th><th className="px-4 py-3 text-right">Total</th></tr></thead><tbody className="divide-y divide-gray-800">{data.rows.map((row: any, i: number) => (<tr key={i} className="hover:bg-gray-800/30 transition-colors"><td className="px-4 py-3 font-medium text-white">{row.item}</td><td className="px-4 py-3 text-right text-gray-400">{row.qty}</td><td className="px-4 py-3 text-right text-gray-300">{row.price.toFixed(2)}</td><td className="px-4 py-3 text-right text-red-300 text-xs">{row.tax > 0 ? `+${row.tax.toFixed(2)}` : '-'}</td><td className="px-4 py-3 text-right font-bold text-green-400">{row.computedTotal.toFixed(2)}</td></tr>))}</tbody></table></div>
+      <div className="bg-gray-800/80 px-4 py-3 border-t border-gray-700 flex flex-col gap-1 items-end"><div className="flex justify-between w-40 text-xs text-gray-400"><span>Total Tax:</span><span>{data.summary.totalTax.toFixed(2)}</span></div><div className="flex justify-between w-40 text-lg font-bold text-white"><span>Grand Total:</span><span className="text-green-400">{data.summary.grandTotal.toFixed(2)} MAD</span></div></div>
     </div>
   );
 };
@@ -348,6 +288,7 @@ export default function ChatInterface() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [faceExpression, setFaceExpression] = useState<"idle" | "listening" | "speaking" | "thinking">("idle");
   const [isBlinking, setIsBlinking] = useState(false);
+  const [showGame, setShowGame] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -494,6 +435,7 @@ export default function ChatInterface() {
     await append({ role: "user", content: userMessage }, { body: { data: { isAccountantMode } } });
   };
 
+  // 🔥 RESTORED HELPERS 🔥
   const RenderContent = ({ text }: { text?: any }) => {
     if (!text || typeof text !== 'string') return null;
     const html = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br/>");
@@ -526,10 +468,6 @@ export default function ChatInterface() {
     return <RenderContent text={message.content} />;
   };
 
-  const getAvatarSrc = () => {
-    if (isBlinking) return "/amina_blink.png"; if (faceExpression === "speaking") return "/amina_speaking.gif"; if (faceExpression === "listening") return "/amina_listening.png"; if (faceExpression === "thinking") return "/amina_thinking.png"; return "/amina_idle.png";
-  };
-
   return (
     <div className="flex flex-col h-screen bg-black text-white font-sans relative">
       <header className="h-16 border-b border-white/10 flex items-center px-4 justify-between bg-black/80 fixed w-full top-0 z-50 backdrop-blur-md">
@@ -538,6 +476,15 @@ export default function ChatInterface() {
           <div><h1 className={`font-bold text-lg text-transparent bg-clip-text bg-gradient-to-r ${theme.gradient}`}>{isAccountantMode ? "AMINA CPA" : "AMINA AI"}</h1><p className="text-[10px] text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Online</p></div>
         </div>
         <div className="flex gap-2 items-center">
+            {/* 🔥 NEW GAME BUTTON 🔥 */}
+            <button 
+                onClick={() => setShowGame(true)} 
+                className="p-2 bg-pink-600/20 text-pink-400 rounded-full border border-pink-500/30 hover:bg-pink-600 hover:text-white transition-all"
+                title="Stress Buster Mode"
+            >
+                <Gamepad2 size={20} />
+            </button>
+
             {isAccountantMode && (
                 <button onClick={() => setShowCalculator(!showCalculator)} className="p-2 bg-gray-800 text-green-400 rounded-full hover:bg-gray-700 transition-all border border-green-500/30">
                     <Calculator size={20} />
@@ -561,16 +508,14 @@ export default function ChatInterface() {
         )}
       </AnimatePresence>
 
-      {/* 🔥 CALL OVERLAY (UPDATED WITH NEON ANIME AVATAR) */}
+      {/* 🔥 CALL OVERLAY */}
       <AnimatePresence>
       {isCallActive && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
           <button onClick={() => { setIsCallActive(false); stopSpeaking(); }} className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700 z-50"><X size={24} /></button>
           
           <div className="relative cursor-pointer" onClick={() => !isListening && startListening()}>
-            {/* 🔥 REPLACED WITH NEW NEON ANIME CSS AVATAR */}
             <CuteAvatar isSpeaking={isSpeaking || isListening} isListening={isListening} />
-            
             <div className="absolute inset-0 flex items-center justify-center z-20">
                {isSpeaking ? null : isListening ? (<div className="bg-green-500 p-3 rounded-full border-2 border-black animate-bounce shadow-lg"><Mic size={24} fill="white" /></div>) : null}
             </div>
@@ -637,6 +582,14 @@ export default function ChatInterface() {
           </form>
         </div>
       </footer>
+
+      {/* 🎮 STRESS BUSTER GAME OVERLAY */}
+      <AnimatePresence>
+        {showGame && (
+            <StressBuster onClose={() => setShowGame(false)} />
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
