@@ -12,7 +12,7 @@ import {
 import { useRef, useEffect, useState, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import StressBuster from './StressBuster'; 
-import VisionManager from './VisionManager'; // 👈 Ensure this file exists in components folder
+import VisionManager from './VisionManager'; 
 
 // ==========================================
 // 1. NEON ANIME AVATAR
@@ -283,13 +283,15 @@ export default function ChatInterface() {
   // 🔥 VISION STATE
   const [visionMode, setVisionMode] = useState<"camera" | "screen" | null>(null);
 
+  // 🔥 CRITICAL REFS
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsController = useRef<AbortController | null>(null);
+  const isInterruptedRef = useRef(false);
+  
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastSpokenId = useRef<string | null>(null);
-  const isInterruptedRef = useRef(false);
 
   const theme = isAccountantMode 
     ? { border: "border-blue-500", text: "text-blue-300", bg: "bg-blue-600", gradient: "from-blue-500 to-cyan-500" }
@@ -331,18 +333,15 @@ export default function ChatInterface() {
       }
   }, [isCallActive]);
 
-  // 🔥 VISION CALLBACK: Send camera/screen data to Chat
+  // 🔥 VISION CALLBACK
   const handleVisionData = async (visionText: string) => {
       if (!visionText) return;
-      // Send as hidden system message so Amina reacts to it
-      // The filter below prevents this from showing in the UI
       await append({ 
           role: 'user', 
           content: `[VISION DETECTED]: ${visionText}. React naturally to this.` 
       });
   };
 
-  // ... (Stop Speaking logic - No Change)
   const stopSpeaking = () => {
     isInterruptedRef.current = true;
     if (ttsController.current) { ttsController.current.abort(); ttsController.current = null; }
@@ -397,29 +396,79 @@ export default function ChatInterface() {
 
   useEffect(() => { const timeoutId = setTimeout(() => { const last = messages[messages.length - 1]; if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) { speak(last.content, last.id); } }, 100); return () => clearTimeout(timeoutId); }, [messages, isLoading, isCallActive]);
 
+  // 🔥 FIX: ROBUST LISTENING FUNCTION WITH ECHO CANCELLATION
   const startListening = () => {
     if (!isCallActive) return; 
     if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){}
+    
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return setStatusText("Mic not supported");
+    
     const recognition = new SR();
     recognitionRef.current = recognition;
-    recognition.continuous = true; recognition.interimResults = true; recognition.lang = "en-US"; 
-    recognition.onstart = () => { setIsListening(true); if (!isSpeaking) { setStatusText("Listening..."); setFaceExpression("listening"); } };
+    recognition.continuous = true; 
+    recognition.interimResults = true; 
+    recognition.lang = "en-US"; 
+    
+    recognition.onstart = () => { 
+        setIsListening(true); 
+        if (!isSpeaking) {
+            setStatusText("Listening..."); 
+            setFaceExpression("listening"); 
+        }
+    };
+
     recognition.onresult = (e: any) => { 
         const t = e.results?.[e.results.length - 1]?.[0]?.transcript; 
         const isFinal = e.results?.[e.results.length - 1]?.isFinal;
-        if (isSpeaking && t && t.trim().length > 2) { console.log("BARGE-IN:", t); isInterruptedRef.current = true; stopSpeaking(); setFaceExpression("listening"); setStatusText("Listening..."); }
-        if (isFinal && t?.trim().length > 1) { setStatusText("Thinking..."); setIsListening(false); recognition.stop(); setFaceExpression("thinking"); append({ role: "user", content: t }); } 
+
+        // 🔥 1. ECHO/INTERRUPT HANDLER
+        // If AI is speaking, treat input as an interruption signal ONLY.
+        if (isSpeaking) {
+            if (t && t.trim().length > 2) {
+                console.log("Interruption detected:", t);
+                isInterruptedRef.current = true;
+                stopSpeaking(); 
+                // DO NOT APPEND HERE. This prevents self-reply.
+                // The user will likely continue speaking, which will be captured in the next result.
+            }
+            return;
+        }
+
+        // 🔥 2. NORMAL INPUT
+        if (isFinal && t?.trim().length > 1) { 
+            setStatusText("Thinking..."); 
+            setIsListening(false); 
+            recognition.stop();
+            setFaceExpression("thinking"); 
+            append({ role: "user", content: t }); 
+        } 
     };
-    recognition.onerror = () => { };
-    recognition.onend = () => { if (isCallActive && !isLoading) { setTimeout(() => { if(isCallActive) startListening(); }, 100); } };
-    try { recognition.start(); } catch(e){}
+    
+    recognition.onerror = (e: any) => { 
+        console.error("Mic Error:", e.error);
+        if (e.error === 'not-allowed') {
+            setStatusText("Mic Permission Denied 🚫");
+            setIsListening(false);
+        } else if (e.error === 'network') {
+            setStatusText("Network Error 📶");
+        }
+    };
+
+    recognition.onend = () => { 
+        if (isCallActive && !isLoading) {
+             setTimeout(() => { if(isCallActive) startListening(); }, 500);
+        } else {
+            setIsListening(false);
+        }
+    };
+    
+    try { recognition.start(); } catch(e){ console.error("Start Error:", e); }
   };
 
   const handleAvatarClick = () => { if (isSpeaking) { isInterruptedRef.current = true; stopSpeaking(); setTimeout(() => startListening(), 100); } else if (!isListening) { startListening(); } };
 
-  // ... (Other helpers same)
+  // ... (Visuals & File Handling)
   useEffect(() => { if (isLoading) { setFaceExpression("thinking"); } else if (!isSpeaking && !isCallActive) { setFaceExpression("idle"); } }, [isLoading, isSpeaking, isCallActive]);
   useEffect(() => { const interval = setInterval(() => { if (faceExpression === "idle") { setIsBlinking(true); setTimeout(() => setIsBlinking(false), 150); } }, 4000); return () => clearInterval(interval); }, [faceExpression]);
   async function resizeAndToDataUrl(file: File): Promise<string> { return new Promise((resolve) => { const img = new Image(); const reader = new FileReader(); reader.onload = (e) => { img.src = e.target?.result as string; }; img.onload = () => { const canvas = document.createElement("canvas"); const ctx = canvas.getContext("2d"); const scale = Math.min(1024 / img.width, 1024 / img.height, 1); canvas.width = img.width * scale; canvas.height = img.height * scale; ctx?.drawImage(img, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL("image/jpeg", 0.7)); }; reader.readAsDataURL(file); }); }
@@ -517,7 +566,7 @@ export default function ChatInterface() {
         )}
         
         {messages.map((m: any) => {
-            // 🔥 HIDE VISION LOGS (This is what hides the [VISION DETECTED] text)
+            // 🔥 HIDE VISION LOGS (Added Filter)
             if (typeof m.content === 'string' && m.content.startsWith("[VISION DETECTED]")) return null;
 
             const hasContent = (m.content && typeof m.content === 'string' && m.content.trim().length > 0) || (Array.isArray(m.content) && m.content.length > 0);

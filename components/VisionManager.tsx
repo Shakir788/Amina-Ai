@@ -16,7 +16,12 @@ export default function VisionManager({ onAnalysisComplete, mode, onClose }: Vis
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [status, setStatus] = useState("Initializing...");
+  
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 🔥 SMART MEMORY REFS
+  const lastResultRef = useRef<string>(""); // To check duplicates
+  const lastTriggerTimeRef = useRef<number>(0); // To handle cooldown
 
   // 1. START CAMERA OR SCREEN SHARE
   useEffect(() => {
@@ -35,7 +40,7 @@ export default function VisionManager({ onAnalysisComplete, mode, onClose }: Vis
         if (videoRef.current) {
           videoRef.current.srcObject = newStream;
         }
-        setStatus(mode === "screen" ? "Watching Screen..." : "Looking at you...");
+        setStatus(mode === "screen" ? "Watching Screen..." : "Observing you...");
         
         startAnalysisLoop();
 
@@ -62,8 +67,15 @@ export default function VisionManager({ onAnalysisComplete, mode, onClose }: Vis
 
   // 3. CAPTURE & ANALYZE LOOP
   const startAnalysisLoop = () => {
+    // Check every 4 seconds
     intervalRef.current = setInterval(async () => {
       if (!videoRef.current || !canvasRef.current || isAnalyzing) return;
+
+      // 🔥 COOLDOWN CHECK: Don't analyze if we just spoke 10 seconds ago
+      const now = Date.now();
+      if (now - lastTriggerTimeRef.current < 10000) {
+          return; // Still in cooldown
+      }
 
       setIsAnalyzing(true);
       
@@ -73,7 +85,8 @@ export default function VisionManager({ onAnalysisComplete, mode, onClose }: Vis
         canvasRef.current.height = videoRef.current.videoHeight;
         ctx.drawImage(videoRef.current, 0, 0);
         
-        const base64Image = canvasRef.current.toDataURL("image/jpeg", 0.5); // Lower quality for speed
+        // Low quality for speed
+        const base64Image = canvasRef.current.toDataURL("image/jpeg", 0.5); 
 
         try {
           await analyzeImage(base64Image);
@@ -82,15 +95,15 @@ export default function VisionManager({ onAnalysisComplete, mode, onClose }: Vis
         }
       }
       setIsAnalyzing(false);
-    }, 5000); // 5 Seconds Interval
+    }, 4000); 
   };
 
   // 4. SEND TO GEMINI (API)
   const analyzeImage = async (base64Image: string) => {
-    // 🔥 UPDATED STRICT PROMPT: NO BACKGROUND DETAILS
+    // Prompt: STRICT & SHORT
     const prompt = mode === "screen" 
-      ? "Analyze this screen content extremely briefly. Find bugs or summarize text in 1 sentence."
-      : "You are looking at the user. IGNORE the background, walls, and lighting. Focus ONLY on their face and emotion. Describe the vibe in maximum 6 words. Example: 'He looks deep in thought', 'He is smiling', 'He looks tired'. Do not describe clothes or furniture.";
+      ? "Analyze this screen content briefly. Find bugs or summarize text in 1 sentence."
+      : "You are looking at the user. IGNORE background/walls. Focus ONLY on their face/emotion. Describe the vibe in max 6 words. Example: 'He looks deep in thought', 'He is smiling'.";
 
     const res = await fetch("/api/vision", {
       method: "POST",
@@ -109,8 +122,21 @@ export default function VisionManager({ onAnalysisComplete, mode, onClose }: Vis
     });
 
     const data = await res.json();
+    
     if (data.text) {
-      onAnalysisComplete(data.text);
+        const newText = data.text.trim();
+
+        // 🔥 DUPLICATE CHECK: If same as last time, IGNORE
+        if (newText === lastResultRef.current) {
+            console.log("Vision: Duplicate ignored");
+            return; 
+        }
+
+        // Success! Update refs
+        lastResultRef.current = newText;
+        lastTriggerTimeRef.current = Date.now();
+        
+        onAnalysisComplete(newText);
     }
   };
 
@@ -126,7 +152,7 @@ export default function VisionManager({ onAnalysisComplete, mode, onClose }: Vis
       {/* Header */}
       <div className="absolute top-0 w-full p-2 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-center z-10">
         <div className="flex items-center gap-2">
-            {isAnalyzing ? <Loader2 size={14} className="text-purple-400 animate-spin"/> : <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+            {isAnalyzing ? <Loader2 size={14} className="text-purple-400 animate-spin"/> : <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>}
             <span className="text-[10px] font-bold text-white uppercase tracking-wider">{mode === 'screen' ? 'Screen' : 'Live Cam'}</span>
         </div>
         <button onClick={onClose} className="p-1 bg-black/50 hover:bg-red-500 rounded-full text-white transition-colors">
