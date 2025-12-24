@@ -6,7 +6,7 @@ import {
   Briefcase, Heart, Music, MapPin, Calculator, Sparkles,
   Mail, Calendar, CheckCircle, Square, Play, Download, 
   Image as ImageIcon, Loader2, Gamepad2, 
-  Clock, CloudSun, Wind, Droplets, Globe, Search // 👈 New Icons
+  Clock, CloudSun, Wind, Droplets, Globe, Search 
 } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -202,7 +202,7 @@ const YouTubePlayer = ({ toolInvocation }: { toolInvocation: any }) => {
 const StopAction = () => { useEffect(() => { broadcastStop(null); }, []); return (<div className="mt-2 p-2 px-4 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold w-fit flex items-center gap-2 animate-pulse"><Square size={10} fill="currentColor" /> Music Stopped</div>); };
 
 // ==========================================
-// 4. RENDER TOOLS (🔥 UPDATED TO SHOW TIME/WEATHER/NEWS)
+// 4. RENDER TOOLS
 // ==========================================
 const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
   const { toolName, args, result } = toolInvocation;
@@ -211,7 +211,6 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
   if (toolName === 'playYoutube') return <YouTubePlayer toolInvocation={toolInvocation} />;
   if (toolName === 'stopMusic') return <StopAction />;
   
-  // 🔥 SEARCH CARD (Fix for Blank News)
   if (toolName === 'googleSearch') {
       return (
           <div className="mt-2 flex items-center gap-2 text-xs text-gray-400 bg-gray-900/50 p-2 rounded-lg border border-gray-800 w-fit animate-in fade-in">
@@ -221,7 +220,6 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
       );
   }
 
-  // 🔥 TIME CARD
   if (toolName === 'getCurrentTime') {
       if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><Clock size={14}/> Checking time...</div>;
       return (
@@ -236,7 +234,6 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
       );
   }
 
-  // 🔥 WEATHER CARD
   if (toolName === 'getWeather') {
       if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><CloudSun size={14}/> Checking weather...</div>;
       if (result.error) return <div className="text-red-400 text-xs mt-2">Could not find weather.</div>;
@@ -297,7 +294,7 @@ export default function ChatInterface() {
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages, setInput } = useChat({
     api: "/api/chat",
     body: { data: { isAccountantMode } },
-    maxSteps: 5, // 🔥 CRITICAL FIX: Allows AI to search AND reply!
+    maxSteps: 5,
     onError: (err) => console.error("Chat Error:", err),
   });
 
@@ -332,25 +329,66 @@ export default function ChatInterface() {
   const speak = async (rawText: string, messageId: string) => {
     if (lastSpokenId.current === messageId) return;
     lastSpokenId.current = messageId;
+    
+    // Stop listening/speaking current audio
     if (isListening) { setIsListening(false); try { recognitionRef.current?.stop(); } catch(e){} }
     if (audioRef.current) { audioRef.current.pause(); }
 
+    // Clean text
     const cleanText = rawText.replace(/[\u{1F600}-\u{1F64F}]/gu, "").replace(/[*#_`~-]/g, "").trim();
     if (!cleanText) return;
+
+    // 🔥 SMART VOICE SWITCHER
+    // Default: American English (For English messages - Best Emotion)
+    let langForTTS = "en-US"; 
+
+    // 1. Check for Hinglish (Desi Words)
+    // In words ko dekhte hi wo Hindi accent pakad legi
+    const hinglishMarkers = [
+        "kya", "kyu", "kaise", "kaisi", "hai", "tha", "thi", "haan", "nahi", 
+        "tum", "aap", "mera", "mujhe", "batao", "suno", "acha", "theek", 
+        "yaar", "bhai", "matlab", "samjha", "aur", "kuch", "bol", "dekh"
+    ];
+    // Case-insensitive check
+    const isHinglish = hinglishMarkers.some(word => new RegExp(`\\b${word}\\b`, 'i').test(cleanText));
+
+    // 2. Check for Arabic/Darija (Script based)
+    const isArabicScript = /[؀-ۿ]/.test(cleanText);
+
+    if (isArabicScript) {
+        langForTTS = "ar-XA"; // Arabic Voice
+    } else if (isHinglish) {
+        langForTTS = "hi-IN"; // 🔥 Hindi Voice (Desi Accent for Hinglish)
+    }
 
     setStatusText(voiceGender === "female" ? "Amina Speaking..." : "Mohammad Speaking...");
     setIsSpeaking(true); setFaceExpression("speaking");
 
     try {
-      const res = await fetch("/api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: cleanText, voice: voiceGender }) });
+      const res = await fetch("/api/speak", { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json" }, 
+          // Frontend se hamne bata diya ki konsi language use karni hai
+          body: JSON.stringify({ text: cleanText, voice: voiceGender, lang: langForTTS }) 
+      });
+      
       if (!res.ok) throw new Error("TTS Failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
-      audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); if (isCallActive) { setStatusText("Listening..."); setFaceExpression("listening"); startListening(); } else { setStatusText(""); setFaceExpression("idle"); } };
+      audio.onended = () => { 
+          setIsSpeaking(false); 
+          URL.revokeObjectURL(url); 
+          if (isCallActive) { setStatusText("Listening..."); setFaceExpression("listening"); startListening(); } 
+          else { setStatusText(""); setFaceExpression("idle"); } 
+      };
       await audio.play();
-    } catch (e) { setIsSpeaking(false); setFaceExpression("idle"); if(isCallActive) startListening(); }
+    } catch (e) { 
+        console.error("TTS Error:", e);
+        setIsSpeaking(false); setFaceExpression("idle"); 
+        if(isCallActive) startListening(); 
+    }
   };
 
   useEffect(() => {
