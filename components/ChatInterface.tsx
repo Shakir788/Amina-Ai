@@ -18,9 +18,9 @@ import VisionManager from './VisionManager';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-// ... (Avatar, ImageGenerator, InvoiceTable, YouTubePlayer, StopAction SAME AS BEFORE - NO CHANGE) ...
-// Paste karein upar wale components same to same (CuteAvatar, RenderToolInvocation etc.)
-
+// ==========================================
+// 1. NEON ANIME AVATAR
+// ==========================================
 const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListening: boolean }) => {
   return (
     <motion.div 
@@ -54,7 +54,6 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
   );
 };
 
-// ... (Paste ImageGenerator, InvoiceTable, YouTubePlayer, StopAction, RenderToolInvocation from previous code here) ...
 const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   const { args, result } = toolInvocation;
   const [isExpanded, setIsExpanded] = useState(true);
@@ -70,7 +69,44 @@ const InvoiceTable = ({ data }: { data: any }) => { if (!data?.rows) return null
 const broadcastStop = (sourceId: string | null = null) => { if (typeof window !== 'undefined') { const action = sourceId ? 'stop_others' : 'stop_all'; const event = new CustomEvent("AMINA_MEDIA_EVENT", { detail: { action, sourceId } }); window.dispatchEvent(event); } };
 const YouTubePlayer = ({ toolInvocation }: { toolInvocation: any }) => { const [isPlaying, setIsPlaying] = useState(true); const playerId = useRef(Math.random().toString(36).substr(2, 9)).current; const { args, result } = toolInvocation; useEffect(() => { broadcastStop(playerId); const handleSignal = (e: any) => { const { action, sourceId } = e.detail; if (action === 'stop_all') setIsPlaying(false); else if (action === 'stop_others' && sourceId !== playerId) setIsPlaying(false); }; window.addEventListener("AMINA_MEDIA_EVENT", handleSignal); return () => window.removeEventListener("AMINA_MEDIA_EVENT", handleSignal); }, []); if (!isPlaying) return (<div className="mt-2 p-2 px-3 rounded-lg bg-gray-800/50 border border-gray-700 flex items-center gap-2 opacity-50 w-fit"><Square size={12} className="text-red-400" fill="currentColor"/> <span className="text-[10px] text-gray-500 uppercase tracking-wider">Session Ended</span></div>); const origin = typeof window !== 'undefined' ? window.location.origin : ''; const videoId = result?.videoId; const videoSrc = videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&origin=${origin}` : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(args.query)}&origin=${origin}`; return (<div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-red-900/50 shadow-lg relative group animate-in zoom-in duration-300"><div className="relative z-20 p-2 bg-red-900/20 text-red-400 text-xs flex items-center justify-between font-bold border-b border-red-900/30"><div className="flex items-center gap-2"><Music size={14} /> Playing on YouTube</div><button onClick={(e) => { e.stopPropagation(); setIsPlaying(false); }} className="p-1.5 bg-red-500/20 hover:bg-red-500 text-red-200 hover:text-white rounded-full transition-all cursor-pointer z-50"><X size={14} strokeWidth={3} /></button></div><iframe width="100%" height="220" src={videoSrc} title="YouTube" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full relative z-10" /></div>); };
 const StopAction = () => { useEffect(() => { broadcastStop(null); }, []); return (<div className="mt-2 p-2 px-4 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold w-fit flex items-center gap-2 animate-pulse"><Square size={10} fill="currentColor" /> Music Stopped</div>); };
-const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => { const { toolName, args, result } = toolInvocation; if (toolName === 'generateImage') return <ImageGenerator toolInvocation={toolInvocation} />; if (toolName === 'playYoutube') return <YouTubePlayer toolInvocation={toolInvocation} />; if (toolName === 'stopMusic') return <StopAction />; if (toolName === 'googleSearch') { return (<div className="mt-2 flex items-center gap-2 text-xs text-gray-400 bg-gray-900/50 p-2 rounded-lg border border-gray-800 w-fit animate-in fade-in"><Search size={12} className="text-green-400" /> <span>Searching Google for: <span className="text-white font-medium">{args.query}</span>...</span></div>); } if (toolName === 'getCurrentTime') { if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><Clock size={14}/> Checking time...</div>; return (<div className="mt-3 p-4 bg-gray-900 border border-gray-700 rounded-xl max-w-xs shadow-lg flex items-center gap-4"><div className="p-3 bg-blue-900/30 rounded-full text-blue-400"><Clock size={24} /></div><div><div className="text-2xl font-bold text-white">{result.time}</div><div className="text-xs text-gray-400">{result.date}</div><div className="text-[10px] text-blue-400 uppercase tracking-widest mt-1">📍 {result.location}</div></div></div>); } if (toolName === 'getWeather') { if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><CloudSun size={14}/> Checking weather...</div>; if (result.error) return <div className="text-red-400 text-xs mt-2">Could not find weather.</div>; return (<div className="mt-3 p-4 bg-gradient-to-br from-gray-900 to-blue-900/20 border border-blue-500/30 rounded-xl max-w-xs shadow-lg"><div className="flex justify-between items-start mb-2"><div><div className="text-3xl font-bold text-white">{result.temperature}</div><div className="text-sm text-blue-200">{result.condition}</div></div><CloudSun size={32} className="text-yellow-400" /></div><div className="flex gap-4 mt-3 pt-3 border-t border-white/10"><div className="flex items-center gap-1.5 text-xs text-gray-300"><Droplets size={12} className="text-blue-400"/> {result.humidity}</div><div className="flex items-center gap-1.5 text-xs text-gray-300"><Wind size={12} className="text-gray-400"/> {result.wind}</div></div><div className="text-[10px] text-right text-gray-500 mt-2 uppercase tracking-wider">📍 {result.location}</div></div>); } if (toolName === 'showMap') { const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`; return (<div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50"><div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div><div className="h-48 bg-gray-800"><iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={mapSrc} allowFullScreen></iframe></div></div>); } if (toolName === 'scheduleEvent') { return (<div className="mt-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg flex items-center gap-3"><Calendar className="text-purple-400" /><div><div className="text-xs text-purple-300 font-bold">Event Scheduled</div><div className="text-sm text-white">{args.title} on {args.date}</div></div><CheckCircle className="text-green-500 ml-auto" size={16} /></div>); } if (toolName === 'sendEmail') { return (<div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-blue-800/50 shadow-lg"><div className="bg-blue-900/20 p-3 border-b border-blue-800/30 flex items-center gap-2"><div className="p-1.5 bg-blue-500 rounded-full"><Mail size={12} className="text-white" /></div><span className="text-sm font-bold text-blue-300">Email Draft</span></div><div className="p-4 text-sm space-y-3"><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">To:</span><span className="text-white font-medium">{args.to}</span></div><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">Sub:</span><span className="text-white">{args.subject}</span></div><div className="bg-black/30 p-3 rounded-lg text-gray-300 text-xs italic border-l-2 border-blue-500">"{args.body}"</div></div></div>); } return null; };
+
+// ==========================================
+// 4. RENDER TOOLS
+// ==========================================
+const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
+  const { toolName, args, result } = toolInvocation;
+  
+  if (toolName === 'generateImage') return <ImageGenerator toolInvocation={toolInvocation} />;
+  if (toolName === 'playYoutube') return <YouTubePlayer toolInvocation={toolInvocation} />;
+  if (toolName === 'stopMusic') return <StopAction />;
+  
+  // ✅ NEW TOOL HANDLER: MATCHES BACKEND
+  if (toolName === 'showSearchVisuals') {
+      return (
+          <div className="mt-2 flex items-center gap-2 text-xs text-gray-400 bg-gray-900/50 p-2 rounded-lg border border-gray-800 w-fit animate-in fade-in">
+              <Search size={12} className="text-green-400 animate-pulse" /> 
+              <span>Searching Google for: <span className="text-white font-medium">{args.query}</span>...</span>
+          </div>
+      );
+  }
+
+  // Legacy fallback
+  if (toolName === 'googleSearch') {
+      return (
+          <div className="mt-2 flex items-center gap-2 text-xs text-gray-400 bg-gray-900/50 p-2 rounded-lg border border-gray-800 w-fit animate-in fade-in">
+              <Search size={12} className="text-green-400" /> 
+              <span>Searching Google for: <span className="text-white font-medium">{args.query}</span>...</span>
+          </div>
+      );
+  }
+
+  if (toolName === 'getCurrentTime') { if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><Clock size={14}/> Checking time...</div>; return (<div className="mt-3 p-4 bg-gray-900 border border-gray-700 rounded-xl max-w-xs shadow-lg flex items-center gap-4"><div className="p-3 bg-blue-900/30 rounded-full text-blue-400"><Clock size={24} /></div><div><div className="text-2xl font-bold text-white">{result.time}</div><div className="text-xs text-gray-400">{result.date}</div><div className="text-[10px] text-blue-400 uppercase tracking-widest mt-1">📍 {result.location}</div></div></div>); }
+  if (toolName === 'getWeather') { if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><CloudSun size={14}/> Checking weather...</div>; if (result.error) return <div className="text-red-400 text-xs mt-2">Could not find weather.</div>; return (<div className="mt-3 p-4 bg-gradient-to-br from-gray-900 to-blue-900/20 border border-blue-500/30 rounded-xl max-w-xs shadow-lg"><div className="flex justify-between items-start mb-2"><div><div className="text-3xl font-bold text-white">{result.temperature}</div><div className="text-sm text-blue-200">{result.condition}</div></div><CloudSun size={32} className="text-yellow-400" /></div><div className="flex gap-4 mt-3 pt-3 border-t border-white/10"><div className="flex items-center gap-1.5 text-xs text-gray-300"><Droplets size={12} className="text-blue-400"/> {result.humidity}</div><div className="flex items-center gap-1.5 text-xs text-gray-300"><Wind size={12} className="text-gray-400"/> {result.wind}</div></div><div className="text-[10px] text-right text-gray-500 mt-2 uppercase tracking-wider">📍 {result.location}</div></div>); }
+  if (toolName === 'showMap') { const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`; return (<div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50"><div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div><div className="h-48 bg-gray-800"><iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={mapSrc} allowFullScreen></iframe></div></div>); }
+  if (toolName === 'scheduleEvent') { return (<div className="mt-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg flex items-center gap-3"><Calendar className="text-purple-400" /><div><div className="text-xs text-purple-300 font-bold">Event Scheduled</div><div className="text-sm text-white">{args.title} on {args.date}</div></div><CheckCircle className="text-green-500 ml-auto" size={16} /></div>); }
+  if (toolName === 'sendEmail') { return (<div className="mt-3 w-full max-w-sm bg-gray-900 rounded-xl border border-blue-800/50 shadow-lg"><div className="bg-blue-900/20 p-3 border-b border-blue-800/30 flex items-center gap-2"><div className="p-1.5 bg-blue-500 rounded-full"><Mail size={12} className="text-white" /></div><span className="text-sm font-bold text-blue-300">Email Draft</span></div><div className="p-4 text-sm space-y-3"><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">To:</span><span className="text-white font-medium">{args.to}</span></div><div className="flex gap-2"><span className="text-gray-500 w-8 text-xs uppercase">Sub:</span><span className="text-white">{args.subject}</span></div><div className="bg-black/30 p-3 rounded-lg text-gray-300 text-xs italic border-l-2 border-blue-500">"{args.body}"</div></div></div>); }
+  return null;
+};
 
 // ==========================================
 // 5. MAIN CHAT INTERFACE
@@ -96,9 +132,9 @@ export default function ChatInterface() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsController = useRef<AbortController | null>(null);
   
-  // 🔥 LOCKS (State Fixes)
+  // 🔥 LOCKS
   const isAiSpeakingRef = useRef(false); 
-  const isProcessingRef = useRef(false); // New lock to prevent mic restart during API calls
+  const isProcessingRef = useRef(false);
 
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -114,8 +150,7 @@ export default function ChatInterface() {
     body: { data: { isAccountantMode } },
     maxSteps: 5,
     onFinish: () => {
-        isProcessingRef.current = false; // Unlock processing when reply done
-        // Auto-resume listening only if call is still active
+        isProcessingRef.current = false; 
         if(isCallActive) {
             setTimeout(() => {
                 if(isCallActive && !isAiSpeakingRef.current) startListening();
@@ -179,12 +214,10 @@ export default function ChatInterface() {
     if (lastSpokenId.current === messageId) return;
     lastSpokenId.current = messageId;
     
-    // Kill Mic
     isAiSpeakingRef.current = true;
     if (recognitionRef.current) recognitionRef.current.abort();
     setIsListening(false);
     
-    // Stop previous audio
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     setIsSpeaking(false);
 
@@ -211,7 +244,7 @@ export default function ChatInterface() {
           method: "POST", 
           headers: { "Content-Type": "application/json" }, 
           body: JSON.stringify({ text: cleanText, voice: voiceGender, lang: langForTTS }),
-          signal: signal 
+          signal 
       });
       
       if (!res.ok) throw new Error("TTS Failed");
@@ -243,13 +276,11 @@ export default function ChatInterface() {
 
   useEffect(() => { const timeoutId = setTimeout(() => { const last = messages[messages.length - 1]; if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) { speak(last.content, last.id); } }, 500); return () => clearTimeout(timeoutId); }, [messages, isLoading, isCallActive]);
 
-  // 🔥 SAFE MIC LOGIC (No "Hearing..." text, Just logic)
   const startListening = () => {
     if (!isCallActive) return; 
     
-    // HARD GUARDS
-    if (isAiSpeakingRef.current) return; // AI is talking
-    if (isProcessingRef.current) return; // We are waiting for AI reply
+    if (isAiSpeakingRef.current) return; 
+    if (isProcessingRef.current) return; 
 
     if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){}
     
@@ -258,8 +289,8 @@ export default function ChatInterface() {
     
     const recognition = new SR();
     recognitionRef.current = recognition;
-    recognition.continuous = false; // Important for cleaner state
-    recognition.interimResults = false; // 🔥 DISABLED "Hearing..." text
+    recognition.continuous = false; 
+    recognition.interimResults = false; 
     recognition.lang = "en-US"; 
     
     recognition.onstart = () => { 
@@ -278,8 +309,6 @@ export default function ChatInterface() {
             setIsListening(false); 
             recognition.stop();
             setFaceExpression("thinking"); 
-            
-            // 🔥 LOCK PROCESSING
             isProcessingRef.current = true;
             append({ role: "user", content: t }); 
         } 
@@ -287,8 +316,6 @@ export default function ChatInterface() {
 
     recognition.onerror = (e: any) => { 
         if (!isAiSpeakingRef.current && !isProcessingRef.current) {
-             if(e.error !== 'no-speech') console.error("Mic Error:", e.error);
-             // Silent fail is better for UX, user can tap to retry
              setIsListening(false);
              setStatusText("Tap to Speak");
              setFaceExpression("idle");
@@ -296,7 +323,6 @@ export default function ChatInterface() {
     };
 
     recognition.onend = () => { 
-        // Restart ONLY if we are NOT waiting for a reply and AI is NOT speaking
         if (isCallActive && !isProcessingRef.current && !isAiSpeakingRef.current && !isLoading) {
              startListening(); 
         } else {
@@ -309,7 +335,7 @@ export default function ChatInterface() {
 
   const handleAvatarClick = () => {
       if (isSpeaking) {
-          stopSpeaking(); // Kill Audio
+          stopSpeaking(); 
           isAiSpeakingRef.current = false; 
           isProcessingRef.current = false;
           setTimeout(() => startListening(), 100); 
@@ -421,7 +447,6 @@ export default function ChatInterface() {
             </div>
           </div>
           
-          {/* 🔥 HEADPHONE NOTICE TOAST */}
           <AnimatePresence>
             {showHeadphoneNotice && (
                 <motion.div 
@@ -440,13 +465,12 @@ export default function ChatInterface() {
       )}
       </AnimatePresence>
 
-      {/* 🔥 VISION MANAGER OVERLAY */}
       <AnimatePresence>
         {visionMode && (
             <VisionManager 
                 mode={visionMode} 
                 onClose={() => setVisionMode(null)} 
-                onAnalysisComplete={handleVisionData} // Call Amina logic
+                onAnalysisComplete={handleVisionData} 
             />
         )}
       </AnimatePresence>
@@ -461,7 +485,6 @@ export default function ChatInterface() {
         )}
         
         {messages.map((m: any) => {
-            // 🔥 HIDE VISION LOGS
             if (typeof m.content === 'string' && m.content.startsWith("[VISION DETECTED]")) return null;
 
             const hasContent = (m.content && typeof m.content === 'string' && m.content.trim().length > 0) || (Array.isArray(m.content) && m.content.length > 0);

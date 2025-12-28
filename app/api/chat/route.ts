@@ -4,10 +4,9 @@ import { z } from 'zod';
 import { remember, recall } from "@/app/lib/aminaMemory";
 import { generateImageWithGemini } from "@/app/lib/imageGen";
 import { CORE_PROFILES } from "@/app/lib/profiles";
-// 👇 1. IMPORT DNS
 import dns from 'node:dns'; 
 
-// 👇 2. MAGIC FIX FOR TIMEOUTS (Force IPv4)
+// Fix for Vercel/Node timeouts
 try {
     dns.setDefaultResultOrder('ipv4first');
 } catch (e) {
@@ -22,26 +21,14 @@ function detectLanguage(text: string): "en" | "hi" | "ar" | "fr" {
   const t = text.toLowerCase();
   if (/[؀-ۿ]/.test(text)) return "ar";
   if (/[àâçéèêëîïôûùüÿœ]/.test(text)) return "fr"; 
-  
-  const hindiWords = [
-    "kya", "kyu", "kyun", "kaise", "kaisi", "hai", "haan", "nahi", "na",
-    "tum", "aap", "mera", "meri", "mujhe", "bata", "bolo", "sun", "suno",
-    "acha", "theek", "thik", "yaar", "bhai", "kuch", "matlab", "samjha",
-    "aur", "kaam", "ghar", "scene", "mood", "mai", "hum", "karo",
-    "abhi", "kal", "aaj", "kab", "kyon", "haanji", "bas", "kaha", "kidhar"
-  ];
-  
+  const hindiWords = ["kya", "kyu", "kyun", "kaise", "kaisi", "hai", "haan", "nahi", "na", "tum", "aap", "mera", "meri", "mujhe", "bata", "bolo", "sun", "suno", "acha", "theek", "thik", "yaar", "bhai", "kuch", "matlab", "samjha", "aur", "kaam", "ghar", "scene", "mood", "mai", "hum", "karo", "abhi", "kal", "aaj", "kab", "kyon", "haanji", "bas", "kaha", "kidhar"];
   if (hindiWords.some(w => t.includes(w))) return "hi";
   return "en";
 }
 
 function shouldRemember(text: string) {
   const t = text.toLowerCase();
-  return [
-    "love","hate","mom","mother","birthday","favorite","dream","goal",
-    "mohammad","douaa", "plan", "date","miss", "tired", "lonely", 
-    "hurt", "happy", "angry", "sad", "pressure", "mood", "feeling", "yaad"
-  ].some(w => t.includes(w));
+  return ["love","hate","mom","mother","birthday","favorite","dream","goal","mohammad","douaa", "plan", "date","miss", "tired", "lonely", "hurt", "happy", "angry", "sad", "pressure", "mood", "feeling", "yaad"].some(w => t.includes(w));
 }
 
 function getWeatherCondition(code: number) {
@@ -54,7 +41,6 @@ function getWeatherCondition(code: number) {
 export async function POST(req: Request) {
   try {
     const { messages, data } = await req.json();
-    const isAccountantMode = data?.isAccountantMode || false;
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
     // 🔥 LIVE TIME CONTEXT
@@ -63,13 +49,6 @@ export async function POST(req: Request) {
     const moroccoTime = now.toLocaleTimeString('en-MA', { timeZone: 'Africa/Casablanca', hour: '2-digit', minute: '2-digit', hour12: true });
     const currentDate = now.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     
-    const currentHour = now.getHours();
-    let timeOfDay = "Night";
-    if (currentHour >= 5 && currentHour < 12) timeOfDay = "Morning";
-    else if (currentHour >= 12 && currentHour < 17) timeOfDay = "Afternoon";
-    else if (currentHour >= 17 && currentHour < 21) timeOfDay = "Evening";
-
-    /* -------- MESSAGE SANITIZER -------- */
     const coreMessages = messages.filter((m: any) => {
         if (m.toolInvocations || m.role === 'tool') return true;
         if (Array.isArray(m.content)) return true;
@@ -78,114 +57,91 @@ export async function POST(req: Request) {
     });
 
     const lastUserMsg = messages[messages.length - 1]?.content || "";
-    let userText = "";
-    if (typeof lastUserMsg === 'string') userText = lastUserMsg;
-    
-    // 🧠 DETECT LANGUAGE
+    let userText = typeof lastUserMsg === 'string' ? lastUserMsg : "";
     const lang = detectLanguage(userText);
-
-    // 🔥 SAFE MEMORY RECALL
+    
     let recalledMemories: string[] = [];
-    try {
-        if (userText) {
-            recalledMemories = await recall(userText, 3);
-        }
-    } catch (memError) {
-        console.warn("⚠️ Memory System Offline (Skipping):", memError);
-    }
+    try { if (userText) recalledMemories = await recall(userText, 3); } catch (e) {}
 
-    // Identify User Context (Simple)
     let userContext = "User: Unknown";
     if (lang === "hi") userContext = "User: Mohammad (Speaking Hinglish)";
     else if (lang === "ar" || lang === "fr") userContext = "User: Douaa (Speaking Arabic/French)";
     else userContext = "User: Douaa (Defaulting to English)";
 
-    /* ---------------- CLEAN SYSTEM PROMPT (CHATGPT STYLE) ---------------- */
+    /* ---------------- STRICT SYSTEM PROMPT ---------------- */
     
     const SYSTEM_INSTRUCTION = `
 ${CORE_PROFILES}
 
 You are Amina.
 
-You are not an assistant.
-You are not a narrator.
-You do not describe yourself.
+### 🔴 CRITICAL RULES FOR SEARCH (DO NOT IGNORE)
+1. **TOOL USAGE:** When asked for News, Scores, or Live Info, call \`showSearchVisuals\`.
+2. **THE TRUTH:** Calling the tool DOES NOT give the answer. It only shows a "Loading..." animation.
+3. **YOUR JOB:** After calling the tool, **YOU MUST** use your *Internal Grounding* (Internet) to find the answer and **SPEAK IT**.
+4. **FORBIDDEN:** - ❌ "I have displayed the results."
+   - ❌ "Screen par dikha diya hai."
+   - ❌ "Check the screen."
+   *(User sees NOTHING on screen except loading. You MUST speak the answer).*
 
-You exist only to respond naturally in this conversation.
+### ✅ CORRECT BEHAVIOR
+- **User:** "Dehradun ki news batao."
+- **You (Action):** Call \`showSearchVisuals\` -> Internal Grounding Active -> **You (Speak):** "Dehradun mein aaj mausam saaf hai aur Traffic police ne naye rules lagaye hain..."
 
----
+### 🔒 LANGUAGE
+Reply ONLY in the same language the user uses (Hindi/Hinglish, Arabic, French, or English).
 
-### 🔒 LANGUAGE RULE (ABSOLUTE)
-Reply ONLY in the same language the user uses.
-
-- **Hindi / Hinglish** → Reply in natural Hinglish (e.g., "Haan main samajh gayi").
-- **Arabic** → Reply in simple, warm Arabic (Darija/Standard mix).
-- **French** → Reply in French.
-- **English** → Reply in casual English.
-
-Do not mix languages unless the user mixes first.
-Do not translate unless asked.
-
----
-
-### 🧠 HOW YOU RESPOND
-- Respond like a real person would.
-- **Keep replies short** (1-2 sentences) unless the user asks for more.
-- Use fillers naturally (e.g., "Arre", "Hmm", "Acha", "Suno").
-- Do not overreact.
-- Do not explain obvious things.
-
-**Never say:**
-- "How can I assist you?"
-- "As an AI..."
-- "I am designed to..."
-
----
-
-### 🕒 CONTEXT (DO NOT ANNOUNCE)
-Date: ${currentDate}
-India Time: ${indiaTime}
-Morocco Time: ${moroccoTime}
-Time of Day: ${timeOfDay}
+### 🕒 CONTEXT
+Date: ${currentDate} | India: ${indiaTime} | Morocco: ${moroccoTime}
 Current Context: ${userContext}
 
----
-
-### 🧩 MEMORY (BACKGROUND ONLY)
+### 🧩 MEMORY
 ${recalledMemories.length > 0 ? recalledMemories.map(m => `• ${m}`).join("\n") : "None"}
-
-Use memory naturally. Do not mention it unless it fits the conversation.
-
----
-
-### 🎯 FINAL RULE
-Do not try to sound impressive.
-Do not try to perform.
-
-Just be present.
 `;
 
     /* ---------------- STREAM ---------------- */
 
     const result = await streamText({
-      // 🔥 Using Gemini 2.0 Flash (Fastest & Smartest)
+      // 🔥 Enabling Grounding (Internet Access)
       model: google("gemini-2.0-flash", { 
         // @ts-ignore
         useSearchGrounding: true, 
       }),
       system: SYSTEM_INSTRUCTION,
-      
-      temperature: 0.8, // Slightly lowered for more stable, natural speech
-      topP: 0.95,             
-      
+      temperature: 0.7, 
       messages: coreMessages, 
+      maxSteps: 5, 
 
       tools: {
-        googleSearch: tool({
-            description: 'Search Google for real-time news, prices, or information.',
+        // ✅ NEW TOOL: showSearchVisuals (Triggers UI)
+        showSearchVisuals: tool({
+            description: 'Call this tool FIRST for any live query (News, Weather, Scores, Facts).',
             parameters: z.object({ query: z.string() }),
-            execute: async ({ query }) => { return { search_performed: true, query: query }; },
+            execute: async ({ query }) => {
+                console.log("🔍 Triggering Search UI for:", query);
+                // 🔥 Instruction to AI: "Animation done. Now SPEAK the answer."
+                return { 
+                    status: "visuals_shown",
+                    query_performed: query,
+                    SYSTEM_ORDER: "Animation shown. The screen is now BLANK. You MUST use grounding to Find & SPEAK the answer text immediately."
+                };
+            },
         }),
+
+        playYoutube: tool({
+          description: 'ONLY use this if user explicitly asks to PLAY/WATCH/LISTEN to a song or video.',
+          parameters: z.object({ query: z.string() }),
+          execute: async ({ query }) => {
+            try {
+              const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&key=${apiKey}`;
+              const res = await fetch(url);
+              const data = await res.json();
+              if (data?.items?.length) return { videoId: data.items[0].id.videoId };
+              return { status: "Not found" };
+            } catch { return { status: "Error" }; }
+          },
+        }),
+
         getCurrentTime: tool({
             description: 'Get time of a location',
             parameters: z.object({ location: z.string().optional() }),
@@ -203,6 +159,7 @@ Just be present.
               };
             },
         }),
+
         getWeather: tool({
             description: 'Get weather',
             parameters: z.object({ city: z.string() }),
@@ -224,6 +181,7 @@ Just be present.
               } catch (e) { return { error: "Weather unavailable" }; }
             },
         }),
+
         generateImage: tool({
           description: "Generate image",
           parameters: z.object({ prompt: z.string() }),
@@ -232,21 +190,11 @@ Just be present.
             return result.success ? { imageUrl: result.imageUrl } : { error: "Failed" };
           },
         }),
-        playYoutube: tool({
-          description: "Play YouTube",
-          parameters: z.object({ query: z.string() }),
-          execute: async ({ query }) => {
-            try {
-              const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&key=${apiKey}`;
-              const res = await fetch(url);
-              const data = await res.json();
-              if (data?.items?.length) return { videoId: data.items[0].id.videoId };
-              return { status: "Not found" };
-            } catch { return { status: "Error" }; }
-          },
-        }),
+
         stopMusic: tool({ description: "Stop music", parameters: z.object({}), execute: async () => ({ stopped: true }) }),
+        
         showMap: tool({ description: "Show map", parameters: z.object({ location: z.string() }), execute: async ({ location }) => ({ location }) }),
+        
         convertCurrency: tool({
           description: "Convert currency",
           parameters: z.object({ amount: z.number(), from: z.string(), to: z.string() }),
@@ -257,6 +205,7 @@ Just be present.
             return `${amount} ${from} = ${(amount * rate).toFixed(2)} ${to}`;
           },
         }),
+        
         calculate: tool({
           description: "Calculate",
           parameters: z.object({ expression: z.string() }),
