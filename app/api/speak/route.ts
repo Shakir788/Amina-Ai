@@ -8,13 +8,10 @@ const GOOGLE_TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize";
 /* ==========================================
    🧹 HELPER: REMOVE EMOJIS & MARKDOWN
 ========================================== */
-/* ==========================================
-   🧹 HELPER: REMOVE EMOJIS & MARKDOWN
-========================================== */
 function cleanTextForTTS(text: string): string {
   if (!text) return "";
   return text
-    // 1. Remove All Emojis (Modern & Clean Way) 🧹
+    // 1. Remove All Emojis (Modern Way)
     .replace(/\p{Extended_Pictographic}/gu, "") 
     // 2. Remove Markdown symbols
     .replace(/[*#_`~-]/g, "")
@@ -27,17 +24,17 @@ function cleanTextForTTS(text: string): string {
    💎 PREMIUM VOICE CONFIGURATION
 ========================================== */
 const VOICE_CONFIG = {
-  // 🇺🇸 English
+  // 🇺🇸 English (Journey = No Pitch Support)
   en: {
     female: { name: "en-US-Journey-F", languageCode: "en-US" },
     male:   { name: "en-US-Journey-D", languageCode: "en-US" },
   },
-  // 🇮🇳 Hindi / Hinglish (Best for Indian English mix)
+  // 🇮🇳 Hindi (Neural2 = Supports Pitch)
   hi: {
     female: { name: "hi-IN-Neural2-A", languageCode: "hi-IN" }, 
     male:   { name: "hi-IN-Neural2-B", languageCode: "hi-IN" },
   },
-  // 🇸🇦 Arabic (Wavenet = Clear)
+  // 🇸🇦 Arabic (Wavenet = Supports Pitch)
   ar: {
     female: { name: "ar-XA-Wavenet-A", languageCode: "ar-XA" }, 
     male:   { name: "ar-XA-Wavenet-B", languageCode: "ar-XA" },
@@ -94,10 +91,29 @@ export async function POST(req: Request) {
     // @ts-ignore
     const selectedVoice = VOICE_CONFIG[langPrefix][gender];
 
-    // 🔥 STEP 3: ADD HUMAN VARIATION (Fixes Robotic Tone)
-    // Thoda sa randomness add kar rahe hain taaki har baar alag feel aaye
-    const randomPitch = (Math.random() * 2) - 1; // -1 to +1 variation
-    const randomRate = 1.0 + (Math.random() * 0.1 - 0.05); // 0.95 to 1.05 variation
+    // 🔥 STEP 3: SAFE AUDIO CONFIG (NO PITCH FOR ENGLISH JOURNEY)
+    let audioConfig: any = {
+        audioEncoding: "MP3",
+        speakingRate: 1.0, 
+        pitch: 0.0,
+    };
+
+    // Only add variation for Non-English voices (Journey voices crash with pitch changes)
+    if (langPrefix !== 'en') {
+        const randomPitch = (Math.random() * 2) - 1; // -1 to +1
+        const randomRate = 1.0 + (Math.random() * 0.1 - 0.05); // 0.95 to 1.05
+        audioConfig.pitch = randomPitch;
+        audioConfig.speakingRate = randomRate;
+    }
+
+    // Special Language Tweaks
+    if (langPrefix === "ar" && gender === "female") {
+       audioConfig.pitch = 1.0; 
+       audioConfig.speakingRate = 1.05; 
+    }
+    if (langPrefix === "hi") {
+        audioConfig.speakingRate = 1.1; 
+    }
 
     let requestBody: any = {
       input: { text: textToSpeak },
@@ -105,21 +121,8 @@ export async function POST(req: Request) {
         languageCode: selectedVoice.languageCode,
         name: selectedVoice.name,
       },
-      audioConfig: {
-        audioEncoding: "MP3",
-        speakingRate: randomRate, 
-        pitch: randomPitch,
-      },
+      audioConfig: audioConfig,
     };
-
-    // Special Tweaks
-    if (langPrefix === "ar" && gender === "female") {
-       requestBody.audioConfig.pitch = 1.0 + Math.random(); 
-       requestBody.audioConfig.speakingRate = 1.05; 
-    }
-    if (langPrefix === "hi") {
-        requestBody.audioConfig.speakingRate = 1.1; // Hinglish thoda fast acha lagta hai
-    }
 
     // 🔥 STEP 4: CALL GOOGLE
     const response = await fetch(`${GOOGLE_TTS_URL}?key=${apiKey}`, {
@@ -138,12 +141,12 @@ export async function POST(req: Request) {
     const audioContent = data.audioContent; 
     const audioBuffer = Uint8Array.from(atob(audioContent), c => c.charCodeAt(0));
 
-    // 🔥 STEP 5: ADD AI HEADER (ChatGPT Suggestion)
+    // 🔥 STEP 5: ADD AI HEADER
     return new Response(audioBuffer, {
       headers: {
         "Content-Type": "audio/mpeg",
         "Content-Length": audioBuffer.byteLength.toString(),
-        "X-AI-Speech": "true" // Tagging this as AI speech
+        "X-AI-Speech": "true" 
       },
     });
 
