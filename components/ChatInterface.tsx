@@ -6,21 +6,15 @@ import {
   Briefcase, Heart, Music, MapPin, Calculator, Sparkles,
   Mail, Calendar, CheckCircle, Square, Play, Download, 
   Image as ImageIcon, Loader2, Gamepad2, 
-  Clock, CloudSun, Wind, Droplets, Globe, Search, Headphones,
-  Video, Monitor 
+  Clock, CloudSun, Wind, Droplets, Globe, Search 
 } from "lucide-react";
 import { useRef, useEffect, useState, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import StressBuster from './StressBuster'; 
-import VisionManager from './VisionManager'; 
 
-// 🔥 NEW IMPORTS FOR COOL FORMATTING
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+// ... (Avatar, ImageGenerator, InvoiceTable etc. sab same rahenge - No changes needed above)
+// Sirf main ChatInterface logic badal raha hu.
 
-// ==========================================
-// 1. NEON ANIME AVATAR
-// ==========================================
 const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListening: boolean }) => {
   return (
     <motion.div 
@@ -72,9 +66,6 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
   );
 };
 
-// ==========================================
-// 2. IMAGE GENERATOR COMPONENT
-// ==========================================
 const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   const { args, result } = toolInvocation;
   const [isExpanded, setIsExpanded] = useState(true);
@@ -155,9 +146,6 @@ const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   );
 };
 
-// ==========================================
-// 3. INVOICE TABLE & MEDIA MANAGER
-// ==========================================
 const InvoiceTable = ({ data }: { data: any }) => {
   if (!data?.rows) return null;
   return (
@@ -203,16 +191,11 @@ const YouTubePlayer = ({ toolInvocation }: { toolInvocation: any }) => {
 
 const StopAction = () => { useEffect(() => { broadcastStop(null); }, []); return (<div className="mt-2 p-2 px-4 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold w-fit flex items-center gap-2 animate-pulse"><Square size={10} fill="currentColor" /> Music Stopped</div>); };
 
-// ==========================================
-// 4. RENDER TOOLS
-// ==========================================
 const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
   const { toolName, args, result } = toolInvocation;
-  
   if (toolName === 'generateImage') return <ImageGenerator toolInvocation={toolInvocation} />;
   if (toolName === 'playYoutube') return <YouTubePlayer toolInvocation={toolInvocation} />;
   if (toolName === 'stopMusic') return <StopAction />;
-  
   if (toolName === 'googleSearch') {
       return (
           <div className="mt-2 flex items-center gap-2 text-xs text-gray-400 bg-gray-900/50 p-2 rounded-lg border border-gray-800 w-fit animate-in fade-in">
@@ -221,7 +204,6 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
           </div>
       );
   }
-
   if (toolName === 'getCurrentTime') {
       if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><Clock size={14}/> Checking time...</div>;
       return (
@@ -235,11 +217,9 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
           </div>
       );
   }
-
   if (toolName === 'getWeather') {
       if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><CloudSun size={14}/> Checking weather...</div>;
       if (result.error) return <div className="text-red-400 text-xs mt-2">Could not find weather.</div>;
-      
       return (
           <div className="mt-3 p-4 bg-gradient-to-br from-gray-900 to-blue-900/20 border border-blue-500/30 rounded-xl max-w-xs shadow-lg">
               <div className="flex justify-between items-start mb-2">
@@ -257,7 +237,6 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
           </div>
       );
   }
-
   if (toolName === 'showMap') {
       const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`;
       return (<div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50"><div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div><div className="h-48 bg-gray-800"><iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={mapSrc} allowFullScreen></iframe></div></div>);
@@ -282,19 +261,11 @@ export default function ChatInterface() {
   const [faceExpression, setFaceExpression] = useState<"idle" | "listening" | "speaking" | "thinking">("idle");
   const [isBlinking, setIsBlinking] = useState(false);
   const [showGame, setShowGame] = useState(false);
-  const [showHeadphoneNotice, setShowHeadphoneNotice] = useState(false); 
-  
-  // 🔥 VISION STATE
-  const [visionMode, setVisionMode] = useState<"camera" | "screen" | null>(null);
 
-  // 🔥 CRITICAL REFS
+  // 🔥 IMPORTANT: Audio Reference & Abort Controller
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const ttsController = useRef<AbortController | null>(null);
-  const isInterruptedRef = useRef(false);
+  const ttsController = useRef<AbortController | null>(null); // To cancel API calls
   
-  // 🔥 INSTANT LOCK FOR MIC
-  const isAiSpeakingRef = useRef(false); 
-
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -308,15 +279,7 @@ export default function ChatInterface() {
     api: "/api/chat",
     body: { data: { isAccountantMode } },
     maxSteps: 5,
-    onError: (err) => {
-        console.error("Chat Error:", err);
-        if(isCallActive) {
-            setStatusText("Retrying Connection...");
-            setTimeout(() => { 
-                startListening(); 
-            }, 2000);
-        }
-    },
+    onError: (err) => console.error("Chat Error:", err),
   });
 
   const MAX_STORE_MESSAGES = 30;
@@ -340,98 +303,48 @@ export default function ChatInterface() {
   const clearChat = () => { if (confirm(`Delete ${isAccountantMode ? 'Accountant' : 'Personal'} memory?`)) { localStorage.removeItem(storageKey); setMessages([]); stopSpeaking(); } };
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  useEffect(() => {
-      if (isCallActive) {
-          setShowHeadphoneNotice(true);
-          const t = setTimeout(() => setShowHeadphoneNotice(false), 6000);
-          return () => clearTimeout(t);
-      }
-  }, [isCallActive]);
-
-  // 🔥 VISION CALLBACK
-  const handleVisionData = async (visionText: string) => {
-      if (!visionText) return;
-      await append({ 
-          role: 'user', 
-          content: `[VISION DETECTED]: ${visionText}. React naturally to this.` 
-      });
-  };
-
+  // 🔥 POWERFUL STOP FUNCTION (Stops Audio + Cancels Fetch)
   const stopSpeaking = () => {
-    isInterruptedRef.current = true;
-    if (ttsController.current) { ttsController.current.abort(); ttsController.current = null; }
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; audioRef.current.src = ""; audioRef.current = null; }
-    
-    isAiSpeakingRef.current = false;
-    setIsSpeaking(false); 
+    // 1. Cancel any ongoing network request for TTS
+    if (ttsController.current) {
+        ttsController.current.abort();
+        ttsController.current = null;
+    }
+    // 2. Stop currently playing audio
+    if (audioRef.current) { 
+        audioRef.current.pause(); 
+        audioRef.current.currentTime = 0; 
+        audioRef.current = null; 
+    }
+    setIsSpeaking(false);
     setStatusText(""); 
     setFaceExpression("idle");
   };
 
-  const splitIntoChunks = (text: string) => { return text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text]; };
-
-  const speakChunk = async (text: string, lang: string) => {
-      if (isInterruptedRef.current) return; 
-      ttsController.current = new AbortController();
-      const signal = ttsController.current.signal;
-      try {
-          const res = await fetch("/api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: voiceGender, lang }), signal });
-          if (!res.ok) throw new Error("TTS Failed");
-          if (isInterruptedRef.current) return;
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          audioRef.current = audio;
-          return new Promise<void>((resolve) => {
-              audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
-              if (!isInterruptedRef.current) { audio.play().catch(e => resolve()); } else { resolve(); }
-          });
-      } catch (e: any) { if (e.name !== 'AbortError') console.error("Chunk Error:", e); }
-  };
-
   const speak = async (rawText: string, messageId: string) => {
+    // Prevent re-triggering for same message
     if (lastSpokenId.current === messageId) return;
     lastSpokenId.current = messageId;
     
-    // 1. Kill Mic Instantly
-    isAiSpeakingRef.current = true;
-    if (recognitionRef.current) recognitionRef.current.abort();
-    setIsListening(false);
-    stopSpeaking(); 
+    // Stop any existing mic/audio before starting new
+    if (isListening) { setIsListening(false); try { recognitionRef.current?.stop(); } catch(e){} }
+    stopSpeaking(); // 🔥 Ensure previous audio is killed
 
-    // 2. Clean Text (Remove Emojis & Markdown)
-    const cleanText = rawText
-        .replace(/[\u{1F600}-\u{1F64F}]/gu, "") 
-        .replace(/[*#_`~-]/g, "") 
-        .trim();
+    const cleanText = rawText.replace(/[\u{1F600}-\u{1F64F}]/gu, "").replace(/[*#_`~-]/g, "").trim();
+    if (!cleanText) return;
 
-    if (!cleanText) {
-        isAiSpeakingRef.current = false;
-        return;
-    }
-
-    // 3. ENHANCED LANGUAGE DETECTION (Accent Fix)
     let langForTTS = "en-US"; 
-    
-    const hinglishMarkers = [
-        "kya", "kyu", "kaise", "kaisi", "hai", "tha", "thi", "haan", "nahi", "na", 
-        "tum", "aap", "mera", "meri", "mujhe", "batao", "suno", "sun", "acha", 
-        "theek", "thik", "yaar", "bhai", "matlab", "samjha", "aur", "kuch", "bol", 
-        "dekh", "karo", "wale", "wala", "raha", "rahi", "khana", "piya", "sahi", "galat",
-        "pata", "bhi", "log", "kaam", "waise", "woh", "yeh", "karna", "kar"
-    ];
-
-    const lowerText = cleanText.toLowerCase();
-    const isHinglish = hinglishMarkers.some(word => new RegExp(`\\b${word}\\b`, 'i').test(lowerText));
+    const hinglishMarkers = ["kya", "kyu", "kaise", "kaisi", "hai", "tha", "thi", "haan", "nahi", "tum", "aap", "mera", "mujhe", "batao", "suno", "acha", "theek", "yaar", "bhai", "matlab", "samjha", "aur", "kuch", "bol", "dekh"];
+    const isHinglish = hinglishMarkers.some(word => new RegExp(`\\b${word}\\b`, 'i').test(cleanText));
     const isArabicScript = /[؀-ۿ]/.test(cleanText);
 
     if (isArabicScript) langForTTS = "ar-XA"; 
-    else if (isHinglish) langForTTS = "hi-IN"; // 🔥 Force Indian Accent
+    else if (isHinglish) langForTTS = "hi-IN"; 
 
     setStatusText(voiceGender === "female" ? "Amina Speaking..." : "Mohammad Speaking...");
     setIsSpeaking(true); setFaceExpression("speaking");
 
-    // 4. API Call
+    // 🔥 ABORT CONTROLLER SETUP
     ttsController.current = new AbortController();
     const signal = ttsController.current.signal;
 
@@ -440,7 +353,7 @@ export default function ChatInterface() {
           method: "POST", 
           headers: { "Content-Type": "application/json" }, 
           body: JSON.stringify({ text: cleanText, voice: voiceGender, lang: langForTTS }),
-          signal: signal 
+          signal: signal // Attach signal to cancel request if needed
       });
       
       if (!res.ok) throw new Error("TTS Failed");
@@ -452,15 +365,11 @@ export default function ChatInterface() {
       audio.onended = () => { 
           setIsSpeaking(false); 
           URL.revokeObjectURL(url); 
-          isAiSpeakingRef.current = false; // 🔥 UNLOCK MIC
-
+          
           if (isCallActive) { 
-              // 🔥 0.5s DELAY (Echo Buffer)
-              setTimeout(() => {
-                  if (isCallActive && !isAiSpeakingRef.current) {
-                      startListening(); // Auto-Listen
-                  }
-              }, 500);
+              setStatusText("Listening..."); 
+              setFaceExpression("listening"); 
+              startListening(); // Auto-Listen
           } else { 
               setStatusText(""); 
               setFaceExpression("idle"); 
@@ -469,120 +378,120 @@ export default function ChatInterface() {
       
       await audio.play();
     } catch (e: any) { 
-        isAiSpeakingRef.current = false; 
+        if (e.name === 'AbortError') {
+            console.log("TTS Cancelled (User Interrupted)");
+        } else {
+            console.error("TTS Error:", e);
+        }
         setIsSpeaking(false); setFaceExpression("idle"); 
     }
   };
 
-  useEffect(() => { const timeoutId = setTimeout(() => { const last = messages[messages.length - 1]; if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) { speak(last.content, last.id); } }, 100); return () => clearTimeout(timeoutId); }, [messages, isLoading, isCallActive]);
+  useEffect(() => {
+    // Add small delay to ensure message is stable before speaking
+    const timeoutId = setTimeout(() => {
+        const last = messages[messages.length - 1];
+        if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) { 
+            speak(last.content, last.id); 
+        }
+    }, 500); // 500ms debounce prevents double-trigger
 
-  // 🔥 SAFE MIC LOGIC (Walkie-Talkie)
+    return () => clearTimeout(timeoutId);
+  }, [messages, isLoading, isCallActive]);
+
   const startListening = () => {
-    if (!isCallActive) return; 
-    
-    // 🛑 HARD CHECK: If Ref says speaking, DO NOT START.
-    if (isAiSpeakingRef.current) return;
-
-    if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){}
+    if (!isCallActive || (isSpeaking && !audioRef.current?.paused)) return; 
     
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return setStatusText("Mic not supported");
     
+    if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){}
+    
     const recognition = new SR();
     recognitionRef.current = recognition;
     recognition.continuous = false; 
-    recognition.interimResults = true; // Changed to true for visual feedback
+    recognition.interimResults = false; 
     recognition.lang = "en-US"; 
     
-    recognition.onstart = () => { 
-        if (isAiSpeakingRef.current) { recognition.abort(); return; }
-        setIsListening(true); 
-        setStatusText("Listening..."); 
-        setFaceExpression("listening"); 
-    };
-
-    recognition.onresult = (e: any) => { 
-        if (isAiSpeakingRef.current) { recognition.abort(); return; }
-
-        const transcript = e.results?.[e.results.length - 1]?.[0]?.transcript; 
-        const isFinal = e.results?.[e.results.length - 1]?.isFinal;
-
-        // 🔥 Visual Feedback: Show what mic is hearing
-        if (transcript) setStatusText(`Hearing: ${transcript.substring(0, 20)}...`);
-
-        if (isFinal && transcript?.trim().length > 0) { 
-            setStatusText("Thinking..."); 
-            setIsListening(false); 
-            recognition.stop();
-            setFaceExpression("thinking"); 
-            append({ role: "user", content: transcript }); 
-        } 
-    };
-
-    recognition.onerror = (e: any) => { 
-        if (!isAiSpeakingRef.current) {
-             // Optional: Don't show error to keep UI clean, just reset
-             if(e.error !== 'no-speech') console.error("Mic Error:", e.error);
-        }
-    };
-
-    recognition.onend = () => { 
-        if (isCallActive && !isLoading && !isAiSpeakingRef.current) {
-             startListening(); 
-        } else {
-            setIsListening(false);
-        }
-    };
+    recognition.onstart = () => { setIsListening(true); setStatusText("Listening..."); setFaceExpression("listening"); };
+    recognition.onresult = (e: any) => { const t = e.results?.[0]?.[0]?.transcript; if (t?.trim()) { setStatusText("Thinking..."); setIsListening(false); setFaceExpression("thinking"); append({ role: "user", content: t }); } };
+    recognition.onerror = () => { setIsListening(false); setStatusText("Tap Avatar"); setFaceExpression("idle"); };
+    recognition.onend = () => { setIsListening(false); };
     
-    try { recognition.start(); } catch(e){ console.error("Start Error:", e); }
+    try { recognition.start(); } catch(e){}
   };
 
   const handleAvatarClick = () => {
       if (isSpeaking) {
           stopSpeaking(); // Kill Audio & Fetch
-          isAiSpeakingRef.current = false; // Force Unlock
           setTimeout(() => startListening(), 100); // Listen immediately
       } else if (!isListening) {
           startListening();
       }
   };
 
-  // ... (Visuals & File Handling)
   useEffect(() => { if (isLoading) { setFaceExpression("thinking"); } else if (!isSpeaking && !isCallActive) { setFaceExpression("idle"); } }, [isLoading, isSpeaking, isCallActive]);
   useEffect(() => { const interval = setInterval(() => { if (faceExpression === "idle") { setIsBlinking(true); setTimeout(() => setIsBlinking(false), 150); } }, 4000); return () => clearInterval(interval); }, [faceExpression]);
-  async function resizeAndToDataUrl(file: File): Promise<string> { return new Promise((resolve) => { const img = new Image(); const reader = new FileReader(); reader.onload = (e) => { img.src = e.target?.result as string; }; img.onload = () => { const canvas = document.createElement("canvas"); const ctx = canvas.getContext("2d"); const scale = Math.min(1024 / img.width, 1024 / img.height, 1); canvas.width = img.width * scale; canvas.height = img.height * scale; ctx?.drawImage(img, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL("image/jpeg", 0.7)); }; reader.readAsDataURL(file); }); }
+
+  async function resizeAndToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image(); const reader = new FileReader();
+      reader.onload = (e) => { img.src = e.target?.result as string; };
+      img.onload = () => {
+        const canvas = document.createElement("canvas"); const ctx = canvas.getContext("2d");
+        const scale = Math.min(1024 / img.width, 1024 / img.height, 1);
+        canvas.width = img.width * scale; canvas.height = img.height * scale;
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) setSelectedImage(await resizeAndToDataUrl(e.target.files[0])); };
-  const handleFormSubmit = async (e: React.FormEvent) => { e.preventDefault(); if ((!input?.trim() && !selectedImage) || isLoading) return; const userMessage = input; const imageToSend = selectedImage; setInput(""); setSelectedImage(null); if (imageToSend) { const userMsgId = Date.now().toString(); const newUserMsg = { id: userMsgId, role: 'user', content: userMessage || "Analyze this image", experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: imageToSend }] }; setMessages(prev => [...prev, newUserMsg as any]); const assistantMsgId = (Date.now() + 1).toString(); setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: "👀 Looking at image..." } as any]); try { const res = await fetch("/api/vision", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: userMessage || "Analyze this image" }, { type: "image", image: imageToSend }] }] }), }); const data = await res.json(); setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: data.text } : m)); } catch (err) { console.error("Vision Error:", err); setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m)); } return; } await append({ role: "user", content: userMessage }, { body: { data: { isAccountantMode } } }); };
-  
-  // ==========================================
-  // 🎨 NEW MARKDOWN RENDERER (CHATGPT STYLE)
-  // ==========================================
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if ((!input?.trim() && !selectedImage) || isLoading) return;
+    
+    const userMessage = input;
+    const imageToSend = selectedImage;
+    
+    setInput("");
+    setSelectedImage(null);
+
+    if (imageToSend) {
+      const userMsgId = Date.now().toString();
+      const newUserMsg = {
+          id: userMsgId, role: 'user', content: userMessage || "Analyze this image",
+          experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: imageToSend }]
+      };
+      setMessages(prev => [...prev, newUserMsg as any]);
+
+      const assistantMsgId = (Date.now() + 1).toString();
+      setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: "👀 Looking at image..." } as any]);
+
+      try {
+          const res = await fetch("/api/vision", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: userMessage || "Analyze this image" }, { type: "image", image: imageToSend }] }] }),
+          });
+          const data = await res.json();
+          setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: data.text } : m));
+      } catch (err) {
+          console.error("Vision Error:", err);
+          setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m));
+      }
+      return;
+    }
+    await append({ role: "user", content: userMessage }, { body: { data: { isAccountantMode } } });
+  };
+
   const RenderContent = ({ text }: { text?: any }) => {
     if (!text || typeof text !== 'string') return null;
-
-    // Invoice Data Check (Agar JSON Data hai to Table dikhao)
-    try { 
-      if (text.trim().startsWith('{') && text.includes('"rows":')) { 
-        const data = JSON.parse(text); 
-        if (data.rows && data.summary) return <InvoiceTable data={data} />; 
-      } 
-    } catch (e) {}
-
-    return (
-      <div className="prose prose-invert prose-sm max-w-none leading-relaxed
-        prose-p:text-gray-200 prose-p:my-1
-        prose-headings:text-purple-300 prose-headings:font-bold prose-headings:my-2
-        prose-strong:text-white prose-strong:font-extrabold
-        prose-ul:my-1 prose-li:my-0.5 prose-li:marker:text-purple-400
-        prose-ol:my-1 prose-li:marker:text-blue-400
-        prose-code:text-pink-300 prose-code:bg-black/30 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
-        prose-blockquote:border-l-4 prose-blockquote:border-purple-500 prose-blockquote:bg-purple-500/10 prose-blockquote:py-1 prose-blockquote:px-3 prose-blockquote:rounded-r
-      ">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {text}
-        </ReactMarkdown>
-      </div>
-    );
+    const html = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br/>");
+    try { if (text.trim().startsWith('{') && text.includes('"rows":')) { const data = JSON.parse(text); if (data.rows && data.summary) return <InvoiceTable data={data} />; } } catch (e) {}
+    return <div className="prose prose-invert max-w-full text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
   const MessageContent = ({ message }: { message: any }) => {
@@ -618,10 +527,7 @@ export default function ChatInterface() {
           <div><h1 className={`font-bold text-lg text-transparent bg-clip-text bg-gradient-to-r ${theme.gradient}`}>{isAccountantMode ? "AMINA CPA" : "AMINA AI"}</h1><p className="text-[10px] text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Online</p></div>
         </div>
         <div className="flex gap-2 items-center">
-            <button onClick={() => setVisionMode('camera')} className="p-2 bg-pink-600/20 text-pink-400 rounded-full border border-pink-500/30 hover:bg-pink-600 hover:text-white transition-all"><Video size={20} /></button>
-            <button onClick={() => setVisionMode('screen')} className="p-2 bg-blue-600/20 text-blue-400 rounded-full border border-blue-500/30 hover:bg-blue-600 hover:text-white transition-all"><Monitor size={20} /></button>
-
-            <button onClick={() => setShowGame(true)} className="p-2 bg-purple-600/20 text-purple-400 rounded-full border border-purple-500/30 hover:bg-purple-600 hover:text-white transition-all" title="Stress Buster Mode">
+            <button onClick={() => setShowGame(true)} className="p-2 bg-pink-600/20 text-pink-400 rounded-full border border-pink-500/30 hover:bg-pink-600 hover:text-white transition-all" title="Stress Buster Mode">
                 <Gamepad2 size={20} />
             </button>
             {isAccountantMode && (
@@ -651,6 +557,7 @@ export default function ChatInterface() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
           <button onClick={() => { setIsCallActive(false); stopSpeaking(); }} className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700 z-50"><X size={24} /></button>
           
+          {/* 🔥 INTERRUPTIBLE AVATAR CLICK */}
           <div className="relative cursor-pointer" onClick={handleAvatarClick}>
             <CuteAvatar isSpeaking={isSpeaking || isListening} isListening={isListening} />
             <div className="absolute inset-0 flex items-center justify-center z-20">
@@ -658,34 +565,11 @@ export default function ChatInterface() {
             </div>
           </div>
           
-          {/* 🔥 HEADPHONE NOTICE TOAST */}
-          <AnimatePresence>
-            {showHeadphoneNotice && (
-                <motion.div 
-                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                    className="absolute top-20 bg-black/80 text-white px-4 py-2 rounded-full border border-white/20 flex items-center gap-2 text-sm backdrop-blur-md z-[110]"
-                >
-                    <Headphones size={16} className="text-purple-400" /> Use headphones for best experience! 🎧
-                </motion.div>
-            )}
-          </AnimatePresence>
-
           <h2 className="mt-10 text-3xl font-bold text-white">{voiceGender === "female" ? "Amina" : "Mohammad"}</h2>
           <p className={`text-lg mt-2 font-medium ${theme.text}`}>{statusText || "Tap Avatar to Start"}</p>
           <div className="absolute bottom-12 flex items-center gap-3"><button onClick={() => setVoiceGender((v) => (v === "female" ? "male" : "female"))} className="px-6 py-3 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all">Switch Voice ({voiceGender})</button></div>
         </motion.div>
       )}
-      </AnimatePresence>
-
-      {/* 🔥 VISION MANAGER OVERLAY */}
-      <AnimatePresence>
-        {visionMode && (
-            <VisionManager 
-                mode={visionMode} 
-                onClose={() => setVisionMode(null)} 
-                onAnalysisComplete={handleVisionData} // Call Amina logic
-            />
-        )}
       </AnimatePresence>
 
       <main className="flex-1 overflow-y-auto pt-20 pb-24 px-4 md:px-20 lg:px-64 scroll-smooth">
@@ -698,9 +582,6 @@ export default function ChatInterface() {
         )}
         
         {messages.map((m: any) => {
-            // 🔥 HIDE VISION LOGS (Added Filter)
-            if (typeof m.content === 'string' && m.content.startsWith("[VISION DETECTED]")) return null;
-
             const hasContent = (m.content && typeof m.content === 'string' && m.content.trim().length > 0) || (Array.isArray(m.content) && m.content.length > 0);
             const hasTools = m.toolInvocations && m.toolInvocations.length > 0;
             if (!hasContent && !hasTools) return null; 
