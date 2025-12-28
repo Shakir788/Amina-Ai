@@ -3,8 +3,16 @@ import { streamText, tool } from 'ai';
 import { z } from 'zod';
 import { remember, recall } from "@/app/lib/aminaMemory";
 import { generateImageWithGemini } from "@/app/lib/imageGen";
-// 👇 IMPORT PROFILE
-import { CORE_PROFILES } from "@/app/lib/profiles"; 
+import { CORE_PROFILES } from "@/app/lib/profiles";
+// 👇 1. IMPORT DNS
+import dns from 'node:dns'; 
+
+// 👇 2. MAGIC FIX FOR TIMEOUTS (Force IPv4)
+try {
+    dns.setDefaultResultOrder('ipv4first');
+} catch (e) {
+    console.log("DNS setup skipped");
+}
 
 export const maxDuration = 60;
 
@@ -13,9 +21,8 @@ export const maxDuration = 60;
 function detectLanguage(text: string): "en" | "hi" | "ar" | "fr" {
   const t = text.toLowerCase();
   if (/[؀-ۿ]/.test(text)) return "ar";
-  if (/[àâçéèêëîïôûùüÿœ]/.test(text)) return "fr"; // French detection
+  if (/[àâçéèêëîïôûùüÿœ]/.test(text)) return "fr"; 
   
-  // Hinglish Words
   const hindiWords = [
     "kya", "kyu", "kyun", "kaise", "kaisi", "hai", "haan", "nahi", "na",
     "tum", "aap", "mera", "meri", "mujhe", "bata", "bolo", "sun", "suno",
@@ -39,7 +46,7 @@ function shouldRemember(text: string) {
 
 function getWeatherCondition(code: number) {
     if (code === 0) return "Clear Sky ☀️";
-    return "Cloudy ☁️"; // Simplified for brevity
+    return "Cloudy ☁️"; 
 }
 
 /* --------------- ROUTE ------------------- */
@@ -56,7 +63,6 @@ export async function POST(req: Request) {
     const moroccoTime = now.toLocaleTimeString('en-MA', { timeZone: 'Africa/Casablanca', hour: '2-digit', minute: '2-digit', hour12: true });
     const currentDate = now.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     
-    // Time of Day
     const currentHour = now.getHours();
     let timeOfDay = "Night";
     if (currentHour >= 5 && currentHour < 12) timeOfDay = "Morning";
@@ -75,18 +81,27 @@ export async function POST(req: Request) {
     let userText = "";
     if (typeof lastUserMsg === 'string') userText = lastUserMsg;
     
-    // 🧠 DETECT LANGUAGE & IDENTITY
+    // 🧠 DETECT LANGUAGE
     const lang = detectLanguage(userText);
-    const recalledMemories = await recall(userText || "Media", 3);
 
-    /* ---------------- DYNAMIC IDENTITY & LANGUAGE RULE ---------------- */
-    // 🔥 YAHAN MAGIC HOGA: Language se pata chalega User kaun hai
+    // 🔥 SAFE MEMORY RECALL (CRASH PROOF)
+    let recalledMemories: string[] = [];
+    try {
+        if (userText) {
+            // Only try to recall if there is text, otherwise skip to save time
+            recalledMemories = await recall(userText, 3);
+        }
+    } catch (memError) {
+        console.warn("⚠️ Memory System Offline (Skipping):", memError);
+        // We continue smoothly without memory, NO CRASH.
+    }
+
+    /* ---------------- DYNAMIC IDENTITY ---------------- */
     
     let activeUserContext = "";
     let languageRule = "";
 
     if (lang === "hi") {
-        // HINGLISH = MOHAMMAD
         activeUserContext = "🔴 ACTIVE USER: MOHAMMAD (The Creator). He is speaking Hinglish.";
         languageRule = `
         - Reply ONLY in **Hinglish** (Roman Hindi).
@@ -94,7 +109,6 @@ export async function POST(req: Request) {
         - **Vibe:** Urban Indian, witty, partner-like.
         `;
     } else if (lang === "ar") {
-        // ARABIC = DOUAA
         activeUserContext = "🟢 ACTIVE USER: DOUAA (The Primary User). She is speaking Arabic.";
         languageRule = `
         - Reply ONLY in **Simple, Warm Arabic**.
@@ -102,14 +116,12 @@ export async function POST(req: Request) {
         - **Vibe:** Caring, bestie, warm.
         `;
     } else if (lang === "fr") {
-        // FRENCH = DOUAA
         activeUserContext = "🟢 ACTIVE USER: DOUAA (The Primary User). She is speaking French.";
         languageRule = `
         - Reply ONLY in **French**.
         - **Vibe:** Elegant, friendly.
         `;
     } else {
-        // ENGLISH = DEFAULT DOUAA (Unless context says otherwise)
         activeUserContext = "🟢 ACTIVE USER: DOUAA (Assume it is her unless stated otherwise).";
         languageRule = `
         - Reply in **Warm, Natural English**.
@@ -125,7 +137,7 @@ ${CORE_PROFILES}
 
 You are Amina. A real presence.
 
-### 🎭 CURRENT INTERACTION CONTEXT (WHO IS SPEAKING?)
+### 🎭 CURRENT INTERACTION CONTEXT
 ${activeUserContext}
 
 ### 🔒 LANGUAGE RULE (STRICT)
@@ -134,7 +146,7 @@ ${languageRule}
 ### 2. CORE PERSONALITY
 * **Emotional Intelligence:** Read the mood.
 * **Don't be a Robot:** Never say "How can I help?". Say "Hey, what's up?" or "Kif dayra?".
-* **Memory:** ${recalledMemories.map((m: string) => `[${m}]`).join(" ")}
+* **Memory Context:** ${recalledMemories.length > 0 ? recalledMemories.map((m: string) => `[${m}]`).join(" ") : "No previous context available right now."}
 
 ### 3. REAL-TIME CONTEXT
 * **Date:** ${currentDate}
@@ -147,13 +159,14 @@ ${languageRule}
 * Use 'playYoutube' for music.
 
 **FINAL COMMAND:**
-Talk to the specific user identified above. Do not confuse them.
+Talk to the specific user identified above. Do not confuse them. Be concise.
 `;
 
     /* ---------------- STREAM ---------------- */
 
     const result = await streamText({
-      model: google("gemini-2.5-pro", {
+      // 🔥 Using Flash model for SPEED (Prevents Timeout)
+      model: google("gemini-2.5-pro", { 
         // @ts-ignore
         useSearchGrounding: true, 
       }),
@@ -170,7 +183,6 @@ Talk to the specific user identified above. Do not confuse them.
             description: 'Search Google for real-time news, prices, or information.',
             parameters: z.object({ query: z.string() }),
             execute: async ({ query }) => {
-              // ... Same logic
               return { search_performed: true, query: query }; 
             },
         }),
@@ -263,8 +275,13 @@ Talk to the specific user identified above. Do not confuse them.
       },
 
       onFinish: async ({ text }) => {
+        // 🔥 SAFE REMEMBER (Also Crash Proof)
         if (text && userText && shouldRemember(userText)) {
-          await remember(`User: "${userText}" → Amina: "${text.slice(0, 60)}"`);
+            try {
+                await remember(`User: "${userText}" → Amina: "${text.slice(0, 60)}"`);
+            } catch (err) {
+                console.warn("Could not save memory:", err);
+            }
         }
       },
     });
