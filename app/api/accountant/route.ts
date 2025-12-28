@@ -1,11 +1,21 @@
 import { NextResponse } from "next/server";
+// 👇 1. IMPORT DNS (Network Fix - Bahut Zaroori Hai)
+import dns from 'node:dns'; 
 
 export const runtime = "nodejs";
+
+// 👇 2. MAGIC FIX FOR TIMEOUTS (Force IPv4)
+try {
+    dns.setDefaultResultOrder('ipv4first');
+} catch (e) {
+    console.log("DNS setup skipped");
+}
 
 // =========================================
 // ✅ ACCOUNTANT CONFIG
 // =========================================
-const MODEL_NAME = "gemini-2.5-pro"; // Updated Model
+// 🔥 Using 2.0 Flash because it is BEST for Vision/OCR
+const MODEL_NAME = "gemini-2.0-flash"; 
 
 // ---------------------------------------------
 // ⭐ HELPER: CLEAN GEMINI JSON
@@ -64,8 +74,8 @@ async function callGeminiAccountant(userText: string, imageBase64?: string) {
   const apiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (!apiKey) throw new Error("Missing Google API Key");
 
-  const cleanModelId = MODEL_NAME.replace("models/", "");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModelId}:generateContent?key=${apiKey}`;
+  // Format Model ID correctly
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
 
   // 1. Construct Payload
   const parts: any[] = [];
@@ -86,7 +96,7 @@ async function callGeminiAccountant(userText: string, imageBase64?: string) {
   const body = {
     contents: [{ role: "user", parts: parts }],
     generationConfig: {
-      temperature: 0.1, 
+      temperature: 0.1, // Precision mode (Creative mode OFF)
       responseMimeType: "application/json", 
     }
   };
@@ -121,26 +131,50 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const messages = Array.isArray(body.messages) ? body.messages : [];
     
-    const lastMessage = messages[messages.length - 1];
-    const userText = lastMessage?.content || "";
+    // Get the last user message text (if any)
+    let userText = "";
+    // Check if the structure is from 'useChat' (messages array) or direct payload
+    if (messages.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        if (typeof lastMsg.content === 'string') {
+            userText = lastMsg.content;
+        } else if (Array.isArray(lastMsg.content)) {
+            // Handle multi-modal content array
+            const textPart = lastMsg.content.find((c: any) => c.type === 'text');
+            if (textPart) userText = textPart.text;
+        }
+    }
 
     // Check for Image Attachment
     let imageBase64: string | undefined = undefined;
     
     // 🔥 FIX 1: Check DIRECT DATA Payload First (Force Send from Frontend)
     if (body.data?.image_base64) {
-      console.log("📸 Image found in DATA payload");
+      console.log("📸 Accountant: Image found in DATA payload");
       const raw = body.data.image_base64;
-      // Handle "data:image/jpeg;base64,..." prefix if present
       const parts = raw.split(",");
       imageBase64 = parts.length > 1 ? parts[1] : raw;
     } 
-    // 🔥 FIX 2: Fallback to Attachments
-    else if (lastMessage?.experimental_attachments?.[0]?.url) {
-      console.log("📸 Image found in ATTACHMENTS");
-      const dataUrl = lastMessage.experimental_attachments[0].url;
-      const parts = dataUrl.split(",");
-      if (parts.length > 1) imageBase64 = parts[1];
+    // 🔥 FIX 2: Check inside 'messages' content (New Vercel AI SDK format)
+    else if (messages.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        // If content is array (text + image)
+        if (Array.isArray(lastMsg.content)) {
+            const imgPart = lastMsg.content.find((c: any) => c.type === 'image');
+            if (imgPart && imgPart.image) {
+                 console.log("📸 Accountant: Image found in Message Content");
+                 const raw = imgPart.image;
+                 const parts = raw.split(",");
+                 imageBase64 = parts.length > 1 ? parts[1] : raw;
+            }
+        }
+        // Fallback: experimental_attachments
+        else if (lastMsg.experimental_attachments?.[0]?.url) {
+            console.log("📸 Accountant: Image found in Attachments");
+            const dataUrl = lastMsg.experimental_attachments[0].url;
+            const parts = dataUrl.split(",");
+            imageBase64 = parts.length > 1 ? parts[1] : parts[0];
+        }
     }
 
     console.log(`📊 Accountant (2.0) analyzing... Image Present: ${!!imageBase64}`);
@@ -151,6 +185,11 @@ export async function POST(req: Request) {
     // PARSE & RETURN
     try {
       const parsedData = JSON.parse(jsonString);
+      
+      // Basic Validation
+      if(!parsedData.rows) parsedData.rows = [];
+      if(!parsedData.summary) parsedData.summary = { rowCount: 0, grandTotal: 0, totalTax: 0 };
+
       return NextResponse.json(parsedData, { status: 200 });
     } catch (e) {
       console.error("JSON Parse Error:", jsonString);

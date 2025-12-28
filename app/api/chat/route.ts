@@ -27,7 +27,7 @@ function detectLanguage(text: string): "en" | "hi" | "ar" | "fr" {
     "kya", "kyu", "kyun", "kaise", "kaisi", "hai", "haan", "nahi", "na",
     "tum", "aap", "mera", "meri", "mujhe", "bata", "bolo", "sun", "suno",
     "acha", "theek", "thik", "yaar", "bhai", "kuch", "matlab", "samjha",
-    "aur", "kaam", "ghar", "scene", "mood", 
+    "aur", "kaam", "ghar", "scene", "mood", "mai", "hum", "karo",
     "abhi", "kal", "aaj", "kab", "kyon", "haanji", "bas", "kaha", "kidhar"
   ];
   
@@ -40,7 +40,7 @@ function shouldRemember(text: string) {
   return [
     "love","hate","mom","mother","birthday","favorite","dream","goal",
     "mohammad","douaa", "plan", "date","miss", "tired", "lonely", 
-    "hurt", "happy", "angry", "sad", "pressure", "mood", "feeling"
+    "hurt", "happy", "angry", "sad", "pressure", "mood", "feeling", "yaad"
   ].some(w => t.includes(w));
 }
 
@@ -84,110 +84,108 @@ export async function POST(req: Request) {
     // 🧠 DETECT LANGUAGE
     const lang = detectLanguage(userText);
 
-    // 🔥 SAFE MEMORY RECALL (CRASH PROOF)
+    // 🔥 SAFE MEMORY RECALL
     let recalledMemories: string[] = [];
     try {
         if (userText) {
-            // Only try to recall if there is text, otherwise skip to save time
             recalledMemories = await recall(userText, 3);
         }
     } catch (memError) {
         console.warn("⚠️ Memory System Offline (Skipping):", memError);
-        // We continue smoothly without memory, NO CRASH.
     }
 
-    /* ---------------- DYNAMIC IDENTITY ---------------- */
-    
-    let activeUserContext = "";
-    let languageRule = "";
+    // Identify User Context (Simple)
+    let userContext = "User: Unknown";
+    if (lang === "hi") userContext = "User: Mohammad (Speaking Hinglish)";
+    else if (lang === "ar" || lang === "fr") userContext = "User: Douaa (Speaking Arabic/French)";
+    else userContext = "User: Douaa (Defaulting to English)";
 
-    if (lang === "hi") {
-        activeUserContext = "🔴 ACTIVE USER: MOHAMMAD (The Creator). He is speaking Hinglish.";
-        languageRule = `
-        - Reply ONLY in **Hinglish** (Roman Hindi).
-        - Use Hindi sentence structure (e.g., "Main aa raha hu").
-        - **Vibe:** Urban Indian, witty, partner-like.
-        `;
-    } else if (lang === "ar") {
-        activeUserContext = "🟢 ACTIVE USER: DOUAA (The Primary User). She is speaking Arabic.";
-        languageRule = `
-        - Reply ONLY in **Simple, Warm Arabic**.
-        - **Constraint:** NO English translations. NO Hindi words.
-        - **Vibe:** Caring, bestie, warm.
-        `;
-    } else if (lang === "fr") {
-        activeUserContext = "🟢 ACTIVE USER: DOUAA (The Primary User). She is speaking French.";
-        languageRule = `
-        - Reply ONLY in **French**.
-        - **Vibe:** Elegant, friendly.
-        `;
-    } else {
-        activeUserContext = "🟢 ACTIVE USER: DOUAA (Assume it is her unless stated otherwise).";
-        languageRule = `
-        - Reply in **Warm, Natural English**.
-        - Treat the user as **Douaa**.
-        - Ask about her day in Casablanca.
-        `;
-    }
-
-    /* ---------------- SYSTEM PROMPT ---------------- */
+    /* ---------------- CLEAN SYSTEM PROMPT (CHATGPT STYLE) ---------------- */
     
     const SYSTEM_INSTRUCTION = `
 ${CORE_PROFILES}
 
-You are Amina. A real presence.
+You are Amina.
 
-### 🎭 CURRENT INTERACTION CONTEXT
-${activeUserContext}
+You are not an assistant.
+You are not a narrator.
+You do not describe yourself.
 
-### 🔒 LANGUAGE RULE (STRICT)
-${languageRule}
+You exist only to respond naturally in this conversation.
 
-### 2. CORE PERSONALITY
-* **Emotional Intelligence:** Read the mood.
-* **Don't be a Robot:** Never say "How can I help?". Say "Hey, what's up?" or "Kif dayra?".
-* **Memory Context:** ${recalledMemories.length > 0 ? recalledMemories.map((m: string) => `[${m}]`).join(" ") : "No previous context available right now."}
+---
 
-### 3. REAL-TIME CONTEXT
-* **Date:** ${currentDate}
-* **India Time (Mohammad):** ${indiaTime}
-* **Morocco Time (Douaa):** ${moroccoTime}
-* **Time of Day:** ${timeOfDay}
+### 🔒 LANGUAGE RULE (ABSOLUTE)
+Reply ONLY in the same language the user uses.
 
-### 4. TOOLS (INVISIBLE USAGE)
-* Use 'googleSearch' silently for info.
-* Use 'playYoutube' for music.
+- **Hindi / Hinglish** → Reply in natural Hinglish (e.g., "Haan main samajh gayi").
+- **Arabic** → Reply in simple, warm Arabic (Darija/Standard mix).
+- **French** → Reply in French.
+- **English** → Reply in casual English.
 
-**FINAL COMMAND:**
-Talk to the specific user identified above. Do not confuse them. Be concise.
+Do not mix languages unless the user mixes first.
+Do not translate unless asked.
+
+---
+
+### 🧠 HOW YOU RESPOND
+- Respond like a real person would.
+- **Keep replies short** (1-2 sentences) unless the user asks for more.
+- Use fillers naturally (e.g., "Arre", "Hmm", "Acha", "Suno").
+- Do not overreact.
+- Do not explain obvious things.
+
+**Never say:**
+- "How can I assist you?"
+- "As an AI..."
+- "I am designed to..."
+
+---
+
+### 🕒 CONTEXT (DO NOT ANNOUNCE)
+Date: ${currentDate}
+India Time: ${indiaTime}
+Morocco Time: ${moroccoTime}
+Time of Day: ${timeOfDay}
+Current Context: ${userContext}
+
+---
+
+### 🧩 MEMORY (BACKGROUND ONLY)
+${recalledMemories.length > 0 ? recalledMemories.map(m => `• ${m}`).join("\n") : "None"}
+
+Use memory naturally. Do not mention it unless it fits the conversation.
+
+---
+
+### 🎯 FINAL RULE
+Do not try to sound impressive.
+Do not try to perform.
+
+Just be present.
 `;
 
     /* ---------------- STREAM ---------------- */
 
     const result = await streamText({
-      // 🔥 Using Flash model for SPEED (Prevents Timeout)
-      model: google("gemini-2.5-pro", { 
+      // 🔥 Using Gemini 2.0 Flash (Fastest & Smartest)
+      model: google("gemini-2.0-flash", { 
         // @ts-ignore
         useSearchGrounding: true, 
       }),
       system: SYSTEM_INSTRUCTION,
       
-      temperature: 1.0,       
+      temperature: 0.8, // Slightly lowered for more stable, natural speech
       topP: 0.95,             
       
       messages: coreMessages, 
 
       tools: {
-        /* 🌍 GOOGLE SEARCH */
         googleSearch: tool({
             description: 'Search Google for real-time news, prices, or information.',
             parameters: z.object({ query: z.string() }),
-            execute: async ({ query }) => {
-              return { search_performed: true, query: query }; 
-            },
+            execute: async ({ query }) => { return { search_performed: true, query: query }; },
         }),
-
-        /* ⏰ TIME */
         getCurrentTime: tool({
             description: 'Get time of a location',
             parameters: z.object({ location: z.string().optional() }),
@@ -205,8 +203,6 @@ Talk to the specific user identified above. Do not confuse them. Be concise.
               };
             },
         }),
-
-        /* 🌦️ WEATHER */
         getWeather: tool({
             description: 'Get weather',
             parameters: z.object({ city: z.string() }),
@@ -228,8 +224,6 @@ Talk to the specific user identified above. Do not confuse them. Be concise.
               } catch (e) { return { error: "Weather unavailable" }; }
             },
         }),
-
-        /* 🎨 IMAGE */
         generateImage: tool({
           description: "Generate image",
           parameters: z.object({ prompt: z.string() }),
@@ -238,8 +232,6 @@ Talk to the specific user identified above. Do not confuse them. Be concise.
             return result.success ? { imageUrl: result.imageUrl } : { error: "Failed" };
           },
         }),
-
-        /* 🎵 MUSIC */
         playYoutube: tool({
           description: "Play YouTube",
           parameters: z.object({ query: z.string() }),
@@ -254,8 +246,6 @@ Talk to the specific user identified above. Do not confuse them. Be concise.
           },
         }),
         stopMusic: tool({ description: "Stop music", parameters: z.object({}), execute: async () => ({ stopped: true }) }),
-        
-        /* 🗺️ UTILS */
         showMap: tool({ description: "Show map", parameters: z.object({ location: z.string() }), execute: async ({ location }) => ({ location }) }),
         convertCurrency: tool({
           description: "Convert currency",
@@ -275,7 +265,6 @@ Talk to the specific user identified above. Do not confuse them. Be concise.
       },
 
       onFinish: async ({ text }) => {
-        // 🔥 SAFE REMEMBER (Also Crash Proof)
         if (text && userText && shouldRemember(userText)) {
             try {
                 await remember(`User: "${userText}" → Amina: "${text.slice(0, 60)}"`);

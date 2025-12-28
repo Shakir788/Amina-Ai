@@ -14,8 +14,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import StressBuster from './StressBuster'; 
 import VisionManager from './VisionManager'; 
 
-// ... (AVATAR & HELPERS SAME AS YOUR CODE) ...
+// 🔥 NEW IMPORTS FOR COOL FORMATTING
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
+// ==========================================
+// 1. NEON ANIME AVATAR
+// ==========================================
 const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListening: boolean }) => {
   return (
     <motion.div 
@@ -34,6 +39,8 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
             >
                 <div className="absolute bottom-[-10%] left-[20%] w-[60%] h-[70%] bg-black/60 rounded-full blur-[2px]"></div>
                 <div className="absolute top-3 left-3 w-6 h-8 bg-white rounded-full opacity-95 rotate-[-20deg] blur-[0.5px] shadow-[0_0_10px_white]"></div>
+                <div className="absolute bottom-4 right-4 w-2 h-2 bg-white rounded-full opacity-80"></div>
+                <div className="absolute bottom-0 w-full h-1/2 bg-gradient-to-t from-cyan-300/40 to-transparent"></div>
             </motion.div>
         </div>
         <div className="relative group">
@@ -45,6 +52,8 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
             >
                 <div className="absolute bottom-[-10%] left-[20%] w-[60%] h-[70%] bg-black/60 rounded-full blur-[2px]"></div>
                 <div className="absolute top-3 left-3 w-6 h-8 bg-white rounded-full opacity-95 rotate-[-20deg] blur-[0.5px] shadow-[0_0_10px_white]"></div>
+                <div className="absolute bottom-4 right-4 w-2 h-2 bg-white rounded-full opacity-80"></div>
+                <div className="absolute bottom-0 w-full h-1/2 bg-gradient-to-t from-cyan-300/40 to-transparent"></div>
             </motion.div>
         </div>
       </div>
@@ -63,6 +72,9 @@ const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListen
   );
 };
 
+// ==========================================
+// 2. IMAGE GENERATOR COMPONENT
+// ==========================================
 const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   const { args, result } = toolInvocation;
   const [isExpanded, setIsExpanded] = useState(true);
@@ -143,6 +155,9 @@ const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   );
 };
 
+// ==========================================
+// 3. INVOICE TABLE & MEDIA MANAGER
+// ==========================================
 const InvoiceTable = ({ data }: { data: any }) => {
   if (!data?.rows) return null;
   return (
@@ -188,11 +203,16 @@ const YouTubePlayer = ({ toolInvocation }: { toolInvocation: any }) => {
 
 const StopAction = () => { useEffect(() => { broadcastStop(null); }, []); return (<div className="mt-2 p-2 px-4 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold w-fit flex items-center gap-2 animate-pulse"><Square size={10} fill="currentColor" /> Music Stopped</div>); };
 
+// ==========================================
+// 4. RENDER TOOLS
+// ==========================================
 const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
   const { toolName, args, result } = toolInvocation;
+  
   if (toolName === 'generateImage') return <ImageGenerator toolInvocation={toolInvocation} />;
   if (toolName === 'playYoutube') return <YouTubePlayer toolInvocation={toolInvocation} />;
   if (toolName === 'stopMusic') return <StopAction />;
+  
   if (toolName === 'googleSearch') {
       return (
           <div className="mt-2 flex items-center gap-2 text-xs text-gray-400 bg-gray-900/50 p-2 rounded-lg border border-gray-800 w-fit animate-in fade-in">
@@ -201,6 +221,7 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
           </div>
       );
   }
+
   if (toolName === 'getCurrentTime') {
       if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><Clock size={14}/> Checking time...</div>;
       return (
@@ -214,9 +235,11 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
           </div>
       );
   }
+
   if (toolName === 'getWeather') {
       if (!result) return <div className="mt-2 animate-pulse text-xs text-gray-500 flex gap-2"><CloudSun size={14}/> Checking weather...</div>;
       if (result.error) return <div className="text-red-400 text-xs mt-2">Could not find weather.</div>;
+      
       return (
           <div className="mt-3 p-4 bg-gradient-to-br from-gray-900 to-blue-900/20 border border-blue-500/30 rounded-xl max-w-xs shadow-lg">
               <div className="flex justify-between items-start mb-2">
@@ -234,6 +257,7 @@ const RenderToolInvocation = ({ toolInvocation }: { toolInvocation: any }) => {
           </div>
       );
   }
+
   if (toolName === 'showMap') {
       const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`;
       return (<div className="mt-3 w-full max-w-md bg-black/40 rounded-xl overflow-hidden border border-green-900/50"><div className="p-2 bg-green-900/20 text-green-400 font-bold flex gap-2"><MapPin size={14}/> Location</div><div className="h-48 bg-gray-800"><iframe width="100%" height="100%" frameBorder="0" style={{border:0, filter:'invert(90%) hue-rotate(180deg)'}} src={mapSrc} allowFullScreen></iframe></div></div>);
@@ -266,9 +290,10 @@ export default function ChatInterface() {
   // 🔥 CRITICAL REFS
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsController = useRef<AbortController | null>(null);
+  const isInterruptedRef = useRef(false);
   
-  // 🔥🔥🔥 THE MAGIC LOCK: This solves the "Self-Reply" permanently 🔥🔥🔥
-  const isAiSpeakingRef = useRef(false);
+  // 🔥 INSTANT LOCK FOR MIC
+  const isAiSpeakingRef = useRef(false); 
 
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -283,7 +308,15 @@ export default function ChatInterface() {
     api: "/api/chat",
     body: { data: { isAccountantMode } },
     maxSteps: 5,
-    onError: (err) => console.error("Chat Error:", err),
+    onError: (err) => {
+        console.error("Chat Error:", err);
+        if(isCallActive) {
+            setStatusText("Retrying Connection...");
+            setTimeout(() => { 
+                startListening(); 
+            }, 2000);
+        }
+    },
   });
 
   const MAX_STORE_MESSAGES = 30;
@@ -325,44 +358,80 @@ export default function ChatInterface() {
   };
 
   const stopSpeaking = () => {
-    // 🔥 UNLOCK MIC STATE
-    isAiSpeakingRef.current = false;
-
+    isInterruptedRef.current = true;
     if (ttsController.current) { ttsController.current.abort(); ttsController.current = null; }
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; audioRef.current.src = ""; audioRef.current = null; }
-    setIsSpeaking(false); setStatusText(""); setFaceExpression("idle");
+    
+    isAiSpeakingRef.current = false;
+    setIsSpeaking(false); 
+    setStatusText(""); 
+    setFaceExpression("idle");
+  };
+
+  const splitIntoChunks = (text: string) => { return text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text]; };
+
+  const speakChunk = async (text: string, lang: string) => {
+      if (isInterruptedRef.current) return; 
+      ttsController.current = new AbortController();
+      const signal = ttsController.current.signal;
+      try {
+          const res = await fetch("/api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: voiceGender, lang }), signal });
+          if (!res.ok) throw new Error("TTS Failed");
+          if (isInterruptedRef.current) return;
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audioRef.current = audio;
+          return new Promise<void>((resolve) => {
+              audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+              if (!isInterruptedRef.current) { audio.play().catch(e => resolve()); } else { resolve(); }
+          });
+      } catch (e: any) { if (e.name !== 'AbortError') console.error("Chunk Error:", e); }
   };
 
   const speak = async (rawText: string, messageId: string) => {
     if (lastSpokenId.current === messageId) return;
     lastSpokenId.current = messageId;
     
-    // 🔥 STEP 1: INSTANTLY KILL MIC & SET LOCK
-    isAiSpeakingRef.current = true; // Lock immediately
-    if (recognitionRef.current) recognitionRef.current.abort(); // Hard stop
+    // 1. Kill Mic Instantly
+    isAiSpeakingRef.current = true;
+    if (recognitionRef.current) recognitionRef.current.abort();
     setIsListening(false);
+    stopSpeaking(); 
 
-    // Stop previous audio
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-    setIsSpeaking(false);
+    // 2. Clean Text (Remove Emojis & Markdown)
+    const cleanText = rawText
+        .replace(/[\u{1F600}-\u{1F64F}]/gu, "") 
+        .replace(/[*#_`~-]/g, "") 
+        .trim();
 
-    const cleanText = rawText.replace(/[\u{1F600}-\u{1F64F}]/gu, "").replace(/[*#_`~-]/g, "").trim();
     if (!cleanText) {
-        isAiSpeakingRef.current = false; // Unlock if empty
+        isAiSpeakingRef.current = false;
         return;
     }
 
+    // 3. ENHANCED LANGUAGE DETECTION (Accent Fix)
     let langForTTS = "en-US"; 
-    const hinglishMarkers = ["kya", "kyu", "kaise", "kaisi", "hai", "tha", "thi", "haan", "nahi", "tum", "aap", "mera", "mujhe", "batao", "suno", "acha", "theek", "yaar", "bhai", "matlab", "samjha", "aur", "kuch", "bol", "dekh"];
-    const isHinglish = hinglishMarkers.some(word => new RegExp(`\\b${word}\\b`, 'i').test(cleanText));
+    
+    const hinglishMarkers = [
+        "kya", "kyu", "kaise", "kaisi", "hai", "tha", "thi", "haan", "nahi", "na", 
+        "tum", "aap", "mera", "meri", "mujhe", "batao", "suno", "sun", "acha", 
+        "theek", "thik", "yaar", "bhai", "matlab", "samjha", "aur", "kuch", "bol", 
+        "dekh", "karo", "wale", "wala", "raha", "rahi", "khana", "piya", "sahi", "galat",
+        "pata", "bhi", "log", "kaam", "waise", "woh", "yeh", "karna", "kar"
+    ];
+
+    const lowerText = cleanText.toLowerCase();
+    const isHinglish = hinglishMarkers.some(word => new RegExp(`\\b${word}\\b`, 'i').test(lowerText));
     const isArabicScript = /[؀-ۿ]/.test(cleanText);
 
     if (isArabicScript) langForTTS = "ar-XA"; 
-    else if (isHinglish) langForTTS = "hi-IN"; 
+    else if (isHinglish) langForTTS = "hi-IN"; // 🔥 Force Indian Accent
 
     setStatusText(voiceGender === "female" ? "Amina Speaking..." : "Mohammad Speaking...");
     setIsSpeaking(true); setFaceExpression("speaking");
 
+    // 4. API Call
     ttsController.current = new AbortController();
     const signal = ttsController.current.signal;
 
@@ -386,7 +455,7 @@ export default function ChatInterface() {
           isAiSpeakingRef.current = false; // 🔥 UNLOCK MIC
 
           if (isCallActive) { 
-              // 🔥 0.5s DELAY TO AVOID ECHO
+              // 🔥 0.5s DELAY (Echo Buffer)
               setTimeout(() => {
                   if (isCallActive && !isAiSpeakingRef.current) {
                       startListening(); // Auto-Listen
@@ -400,20 +469,12 @@ export default function ChatInterface() {
       
       await audio.play();
     } catch (e: any) { 
-        isAiSpeakingRef.current = false; // Unlock on error
+        isAiSpeakingRef.current = false; 
         setIsSpeaking(false); setFaceExpression("idle"); 
     }
   };
 
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-        const last = messages[messages.length - 1];
-        if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) { 
-            speak(last.content, last.id); 
-        }
-    }, 500); 
-    return () => clearTimeout(timeoutId);
-  }, [messages, isLoading, isCallActive]);
+  useEffect(() => { const timeoutId = setTimeout(() => { const last = messages[messages.length - 1]; if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) { speak(last.content, last.id); } }, 100); return () => clearTimeout(timeoutId); }, [messages, isLoading, isCallActive]);
 
   // 🔥 SAFE MIC LOGIC (Walkie-Talkie)
   const startListening = () => {
@@ -430,11 +491,10 @@ export default function ChatInterface() {
     const recognition = new SR();
     recognitionRef.current = recognition;
     recognition.continuous = false; 
-    recognition.interimResults = false; 
+    recognition.interimResults = true; // Changed to true for visual feedback
     recognition.lang = "en-US"; 
     
     recognition.onstart = () => { 
-        // 🛑 Double Check
         if (isAiSpeakingRef.current) { recognition.abort(); return; }
         setIsListening(true); 
         setStatusText("Listening..."); 
@@ -442,29 +502,39 @@ export default function ChatInterface() {
     };
 
     recognition.onresult = (e: any) => { 
-        // 🛑 Triple Check
         if (isAiSpeakingRef.current) { recognition.abort(); return; }
 
-        const t = e.results?.[0]?.[0]?.transcript; 
-        if (t?.trim()) { 
+        const transcript = e.results?.[e.results.length - 1]?.[0]?.transcript; 
+        const isFinal = e.results?.[e.results.length - 1]?.isFinal;
+
+        // 🔥 Visual Feedback: Show what mic is hearing
+        if (transcript) setStatusText(`Hearing: ${transcript.substring(0, 20)}...`);
+
+        if (isFinal && transcript?.trim().length > 0) { 
             setStatusText("Thinking..."); 
             setIsListening(false); 
+            recognition.stop();
             setFaceExpression("thinking"); 
-            append({ role: "user", content: t }); 
+            append({ role: "user", content: transcript }); 
         } 
     };
 
-    recognition.onerror = () => { 
+    recognition.onerror = (e: any) => { 
         if (!isAiSpeakingRef.current) {
-            setIsListening(false); 
-            setStatusText("Tap Avatar"); 
-            setFaceExpression("idle"); 
+             // Optional: Don't show error to keep UI clean, just reset
+             if(e.error !== 'no-speech') console.error("Mic Error:", e.error);
         }
     };
 
-    recognition.onend = () => { setIsListening(false); };
+    recognition.onend = () => { 
+        if (isCallActive && !isLoading && !isAiSpeakingRef.current) {
+             startListening(); 
+        } else {
+            setIsListening(false);
+        }
+    };
     
-    try { recognition.start(); } catch(e){}
+    try { recognition.start(); } catch(e){ console.error("Start Error:", e); }
   };
 
   const handleAvatarClick = () => {
@@ -477,69 +547,42 @@ export default function ChatInterface() {
       }
   };
 
-  // ... (Visuals & File Handling - NO CHANGES BELOW)
+  // ... (Visuals & File Handling)
   useEffect(() => { if (isLoading) { setFaceExpression("thinking"); } else if (!isSpeaking && !isCallActive) { setFaceExpression("idle"); } }, [isLoading, isSpeaking, isCallActive]);
   useEffect(() => { const interval = setInterval(() => { if (faceExpression === "idle") { setIsBlinking(true); setTimeout(() => setIsBlinking(false), 150); } }, 4000); return () => clearInterval(interval); }, [faceExpression]);
-
-  async function resizeAndToDataUrl(file: File): Promise<string> {
-    return new Promise((resolve) => {
-      const img = new Image(); const reader = new FileReader();
-      reader.onload = (e) => { img.src = e.target?.result as string; };
-      img.onload = () => {
-        const canvas = document.createElement("canvas"); const ctx = canvas.getContext("2d");
-        const scale = Math.min(1024 / img.width, 1024 / img.height, 1);
-        canvas.width = img.width * scale; canvas.height = img.height * scale;
-        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.7));
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
+  async function resizeAndToDataUrl(file: File): Promise<string> { return new Promise((resolve) => { const img = new Image(); const reader = new FileReader(); reader.onload = (e) => { img.src = e.target?.result as string; }; img.onload = () => { const canvas = document.createElement("canvas"); const ctx = canvas.getContext("2d"); const scale = Math.min(1024 / img.width, 1024 / img.height, 1); canvas.width = img.width * scale; canvas.height = img.height * scale; ctx?.drawImage(img, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL("image/jpeg", 0.7)); }; reader.readAsDataURL(file); }); }
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) setSelectedImage(await resizeAndToDataUrl(e.target.files[0])); };
-
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if ((!input?.trim() && !selectedImage) || isLoading) return;
-    
-    const userMessage = input;
-    const imageToSend = selectedImage;
-    
-    setInput("");
-    setSelectedImage(null);
-
-    if (imageToSend) {
-      const userMsgId = Date.now().toString();
-      const newUserMsg = {
-          id: userMsgId, role: 'user', content: userMessage || "Analyze this image",
-          experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: imageToSend }]
-      };
-      setMessages(prev => [...prev, newUserMsg as any]);
-
-      const assistantMsgId = (Date.now() + 1).toString();
-      setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: "👀 Looking at image..." } as any]);
-
-      try {
-          const res = await fetch("/api/vision", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: userMessage || "Analyze this image" }, { type: "image", image: imageToSend }] }] }),
-          });
-          const data = await res.json();
-          setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: data.text } : m));
-      } catch (err) {
-          console.error("Vision Error:", err);
-          setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m));
-      }
-      return;
-    }
-    await append({ role: "user", content: userMessage }, { body: { data: { isAccountantMode } } });
-  };
-
+  const handleFormSubmit = async (e: React.FormEvent) => { e.preventDefault(); if ((!input?.trim() && !selectedImage) || isLoading) return; const userMessage = input; const imageToSend = selectedImage; setInput(""); setSelectedImage(null); if (imageToSend) { const userMsgId = Date.now().toString(); const newUserMsg = { id: userMsgId, role: 'user', content: userMessage || "Analyze this image", experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: imageToSend }] }; setMessages(prev => [...prev, newUserMsg as any]); const assistantMsgId = (Date.now() + 1).toString(); setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: "👀 Looking at image..." } as any]); try { const res = await fetch("/api/vision", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: userMessage || "Analyze this image" }, { type: "image", image: imageToSend }] }] }), }); const data = await res.json(); setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: data.text } : m)); } catch (err) { console.error("Vision Error:", err); setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m)); } return; } await append({ role: "user", content: userMessage }, { body: { data: { isAccountantMode } } }); };
+  
+  // ==========================================
+  // 🎨 NEW MARKDOWN RENDERER (CHATGPT STYLE)
+  // ==========================================
   const RenderContent = ({ text }: { text?: any }) => {
     if (!text || typeof text !== 'string') return null;
-    const html = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br/>");
-    try { if (text.trim().startsWith('{') && text.includes('"rows":')) { const data = JSON.parse(text); if (data.rows && data.summary) return <InvoiceTable data={data} />; } } catch (e) {}
-    return <div className="prose prose-invert max-w-full text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
+
+    // Invoice Data Check (Agar JSON Data hai to Table dikhao)
+    try { 
+      if (text.trim().startsWith('{') && text.includes('"rows":')) { 
+        const data = JSON.parse(text); 
+        if (data.rows && data.summary) return <InvoiceTable data={data} />; 
+      } 
+    } catch (e) {}
+
+    return (
+      <div className="prose prose-invert prose-sm max-w-none leading-relaxed
+        prose-p:text-gray-200 prose-p:my-1
+        prose-headings:text-purple-300 prose-headings:font-bold prose-headings:my-2
+        prose-strong:text-white prose-strong:font-extrabold
+        prose-ul:my-1 prose-li:my-0.5 prose-li:marker:text-purple-400
+        prose-ol:my-1 prose-li:marker:text-blue-400
+        prose-code:text-pink-300 prose-code:bg-black/30 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
+        prose-blockquote:border-l-4 prose-blockquote:border-purple-500 prose-blockquote:bg-purple-500/10 prose-blockquote:py-1 prose-blockquote:px-3 prose-blockquote:rounded-r
+      ">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {text}
+        </ReactMarkdown>
+      </div>
+    );
   };
 
   const MessageContent = ({ message }: { message: any }) => {
