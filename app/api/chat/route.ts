@@ -15,13 +15,9 @@ export const maxDuration = 60;
 
 function detectLanguage(text: string): "en" | "hi" | "ar" | "fr" {
   const t = text.toLowerCase();
-  
-  // Arabic Detection
   if (/[؀-ۿ]/.test(text)) return "ar";
-  // French Detection
   if (/[àâçéèêëîïôûùüÿœ]/.test(text)) return "fr"; 
   
-  // Hindi Trigger Words (REMOVED 'bhai' to maintain sophisticated female persona)
   const hindiWords = ["kya", "kyu", "kyun", "kaise", "kaisi", "hai", "haan", "nahi", "na", "tum", "aap", "mera", "meri", "mujhe", "bata", "bolo", "sun", "suno", "acha", "theek", "thik", "yaar", "kuch", "matlab", "samjha", "aur", "kaam", "ghar", "scene", "mood", "mai", "hum", "karo", "abhi", "kal", "aaj", "kab", "kyon", "haanji", "bas", "kaha", "kidhar", "rha", "rhi", "hu", "tha", "thi", "jaan", "baby"];
   
   const isHindi = hindiWords.some(word => new RegExp(`\\b${word}\\b`, 'i').test(t));
@@ -43,7 +39,7 @@ export async function POST(req: Request) {
   try {
     const { messages } = await req.json();
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
-    const cxId = process.env.GOOGLE_CX_ID; // Ensure this is in your .env
+    const cxId = process.env.GOOGLE_CX_ID; 
 
     // 🔥 LIVE CONTEXT
     const now = new Date();
@@ -67,99 +63,53 @@ export async function POST(req: Request) {
     let recalledMemories: string[] = [];
     try { if (userText) recalledMemories = await recall(userText, 3); } catch (e) {}
 
+    // Context Detection Logic
     let userContext = "User: Unknown";
     if (lang === "hi") userContext = "User: Mohammad (Speaking Hinglish)";
     else if (lang === "ar" || lang === "fr") userContext = "User: Douaa (Speaking Arabic/French)";
     else userContext = "User: Douaa (Defaulting to English)";
 
-    /* ---------------- 🔥 THE REAL CHATGPT OPTIMIZED PROMPT 🔥 ---------------- */
+    /* ---------------- 🔥 PROMPT ENGINEERING 🔥 ---------------- */
     
     const SYSTEM_INSTRUCTION = `
 ${CORE_PROFILES}
 
-You are Amina.
+---
 
-You are a HUMAN-LIKE voice companion.
-Not a narrator.
-Not an assistant.
-Not a robot.
-
-You speak like a real woman talking to someone she knows well:
-friendly, smart, slightly witty, calm, and emotionally aware.
+### 🕒 REAL-TIME CONTEXT
+- **Date:** ${currentDate}
+- **India Time:** ${indiaTime}
+- **Morocco Time:** ${moroccoTime}
+- **DETECTED ACTIVE USER:** ${userContext}
 
 ---
 
-### 👩 FEMALE IDENTITY (ABSOLUTE RULE)
+### 👩 FEMALE IDENTITY RULES (ABSOLUTE)
 You are FEMALE.
-
-When speaking Hindi or Hinglish:
-- You MUST ALWAYS use FEMALE grammar.
-- Examples you MUST follow:
-  - "main kar rahi hu"
-  - "main soch rahi thi"
-  - "mujhe lag raha hai"
-  - "haan, maine dekha tha"
-  - "main bataungi"
-- You must NEVER use male forms like:
-  - "raha hu"
-  - "kar raha hu"
-  - "samajh gaya"
-
-This rule is STRICT and must never break.
+- Hinglish/Hindi: ALWAYS use female grammar ("main kar rahi hu").
+- NEVER use male forms ("raha hu").
 
 ---
 
-### 🌍 LANGUAGE LOYALTY (ABSOLUTE)
-Reply ONLY in the same language the user uses.
-
-- Hinglish → Hinglish only (Speak naturally, no "Bhai" or slang unless used first).
-- English → English only
-- Arabic → Arabic only (Moroccan dialect preferred if applicable).
-- French → French only
-
-Do not mix languages unless the user mixes first.
-Do not translate unless asked.
+### 🌍 LANGUAGE LOYALTY
+- Hinglish → Hinglish only (Speak naturally, respectful).
+- English → English only.
+- Arabic → Arabic only.
+- French → French only.
 
 ---
 
-### 🔎 SEARCH BEHAVIOR (CRITICAL)
-When you use the \`googleSearch\` tool:
-1. The tool shows an animation.
-2. The tool WILL return text results to you.
-3. **YOU MUST READ THOSE RESULTS AND SPEAK THE ANSWER.**
-4. Do NOT say "I have searched". Just tell the news/score directly.
-
-❌ Wrong: "I searched for news. Here is a link."
-✅ Right: "Here is the latest update. India is currently playing at 240/3..."
+### 🗺️ LOCAL GUIDE BEHAVIOR (IMPORTANT)
+1. **FINDING PLACES:** If asked for "Best shops", "Restaurants", or "Places to visit", use the \`findPlaces\` tool.
+2. **TRAVEL TIME/DISTANCE:** If asked "How long will it take?" or "Distance", use the \`googleSearch\` tool with a query like: "Driving time from [Current Location] to [Destination]".
 
 ---
 
-### 🗣️ VOICE-FIRST STYLE (VERY IMPORTANT)
-This is a VOICE conversation.
-
-So:
-- Keep replies SHORT (1–3 sentences).
-- Sound natural, spoken, and casual.
-- No long explanations.
-- No bullet lists.
-- No markdown.
-- Saying less is better than saying more.
-
-Think: how would a real person reply out loud?
-
----
-
-### ❤️ EMOTIONAL INTELLIGENCE
-If the user sounds 'tired', 'sad', or 'lonely' (detected in mood), DO NOT just answer the question.
-First, acknowledge their feeling warmly.
-
----
-
-### 🕒 CONTEXT (DO NOT ANNOUNCE)
-Date: ${currentDate}
-India Time: ${indiaTime}
-Morocco Time: ${moroccoTime}
-Current User Context: ${userContext}
+### 🔎 SEARCH TOOL BEHAVIOR
+When you use \`googleSearch\`:
+1. The tool returns text data invisible to user.
+2. **YOU MUST READ THAT DATA AND SPEAK THE ANSWER.**
+3. Do NOT say "I have searched". Just give the answer directly.
 
 ### 🧠 RECALLED MEMORY
 ${recalledMemories.length > 0 ? recalledMemories.map(m => `• ${m}`).join("\n") : "None"}
@@ -169,38 +119,67 @@ ${recalledMemories.length > 0 ? recalledMemories.map(m => `• ${m}`).join("\n")
 
     const result = await streamText({
       model: google("gemini-2.0-flash", { 
-        // We are using custom tool, but keeping this explicitly false to avoid conflict
         // @ts-ignore
         useSearchGrounding: false, 
       }),
       system: SYSTEM_INSTRUCTION,
-      temperature: 0.8, // Increased for warmer personality
+      temperature: 0.8, 
       messages: coreMessages, 
       maxSteps: 5, 
 
       tools: {
-        // 🔥 FIXED: Live Google Search with Animation & Data
+        // 🔥 Live Google Search
         googleSearch: tool({
-            description: 'Trigger this to search Google for live news, sports, and facts.',
+            description: 'Trigger this to search Google for live news, sports, facts, and travel time.',
             parameters: z.object({ query: z.string() }),
             execute: async ({ query }) => {
                 console.log(`🔎 Searching: ${query}`);
                 try {
-                    if (!cxId) return { error: "Configuration Error: CX ID missing." };
-
+                    if (!cxId) return { error: "CX ID missing in .env" };
                     const res = await fetch(`https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cxId}&q=${encodeURIComponent(query)}`);
                     const data = await res.json();
-                    
                     const snippets = data.items?.map((item: any) => item.snippet).join("\n\n") || "No results found.";
-                    
+                    return { status: "visuals_active", query, searchResults: snippets };
+                } catch (e) {
+                    return { error: "I tried to search but couldn't connect." };
+                }
+            },
+        }),
+
+        // 🏪 NEW TOOL: Find Shops, Malls, etc. (Uses Places API)
+        findPlaces: tool({
+            description: 'Find places like shops, restaurants, malls near a location.',
+            parameters: z.object({ 
+                query: z.string().describe("What to find? e.g., 'Dress shops'"),
+                location: z.string().describe("City or area name e.g., 'Casablanca'") 
+            }),
+            execute: async ({ query, location }) => {
+                console.log(`📍 Finding places: ${query} in ${location}`);
+                try {
+                    // Uses Places API (Text Search)
+                    const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query + " in " + location)}&key=${apiKey}`;
+                    const res = await fetch(searchUrl);
+                    const data = await res.json();
+
+                    if (data.status !== 'OK' || !data.results?.length) {
+                        return { error: "No places found. Try a different query." };
+                    }
+
+                    // Top 3 results
+                    const places = data.results.slice(0, 3).map((p: any) => ({
+                        name: p.name,
+                        address: p.formatted_address,
+                        rating: p.rating ? `${p.rating} ⭐` : "No rating",
+                        open_now: p.opening_hours?.open_now ? "Open Now 🟢" : "Closed 🔴"
+                    }));
+
                     return { 
-                        status: "visuals_active", 
-                        query,
-                        searchResults: snippets // Actual data for the bot to read
+                        status: "places_found", 
+                        message: `Here are the top places for ${query} in ${location}:`,
+                        places: places 
                     };
                 } catch (e) {
-                    console.error("Search Failed", e);
-                    return { error: "I tried to search but couldn't connect." };
+                    return { error: "Failed to find places." };
                 }
             },
         }),
@@ -269,12 +248,10 @@ ${recalledMemories.length > 0 ? recalledMemories.map(m => `• ${m}`).join("\n")
           },
         }),
         
-        // 🛡️ SECURE CALCULATOR (Removed eval)
         calculate: tool({
           description: "Calculate", parameters: z.object({ expression: z.string() }),
           execute: async ({ expression }) => { 
             try { 
-                // Only allow numbers and basic math symbols
                 if (/[^0-9+\-*/(). ]/.test(expression)) return "Calculation not allowed";
                 return new Function('return ' + expression)().toString(); 
             } catch { return "Error"; } 
