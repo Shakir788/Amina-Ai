@@ -79,12 +79,12 @@ export async function POST(req: Request) {
 
     const lastUserMsg = messages[messages.length - 1]?.content || "";
     const userText = typeof lastUserMsg === "string" ? lastUserMsg : "";
-   
-   
-     
-    const lang = detectLanguage(userText);
 
-    // Memory Recall
+    // ---------------------------------------------------------
+    // 🧠 INTELLIGENT ROUTING & IDENTITY (AUDITED FIX)
+    // ---------------------------------------------------------
+    
+    // A. Memory Recall (Moved UP for Identity Check)
     let recalledMemories: string[] = [];
     try {
       if (userText) recalledMemories = await recall(userText, 3);
@@ -92,11 +92,39 @@ export async function POST(req: Request) {
         console.warn("Memory recall failed:", err);
     }
 
-    // Dynamic User Context
-    let userContext = "User: Unknown";
-    if (lang === "hi") userContext = "User: Mohammad (Speaking Hinglish)";
-    else if (lang === "ar" || lang === "fr") userContext = "User: Douaa (Speaking Arabic/French)";
-    else userContext = "User: Douaa (Defaulting to English)";
+    // B. Detect Raw Language
+    const detectedLang = detectLanguage(userText);
+
+    // C. 👤 USER IDENTITY (LANGUAGE-INDEPENDENT FIX)
+    // Default to Douaa (Safe default)
+    let userContext = "User: Douaa (Defaulting to English)";
+
+    // If past memory mentions Mohammad explicitly -> Switch to Mohammad
+    if (recalledMemories.some(m => m.toLowerCase().includes("mohammad"))) {
+      userContext = "User: Mohammad (Speaking Hinglish)";
+    }
+    
+    // Fallback: If no memory but strict Hindi keywords found -> Assume Mohammad
+    // (Optional safety net, kept minimal as per audit)
+    else if (detectedLang === "hi") {
+       userContext = "User: Mohammad (Speaking Hinglish)";
+    }
+
+    // D. Language Preference Override
+    let forcedLang: "en" | "hi" | "ar" | "fr" | null = null;
+
+    if (userContext.includes("Douaa")) {
+      forcedLang = null; // Allow En/Ar/Fr, but no Hinglish vibe
+    }
+
+    if (userContext.includes("Mohammad")) {
+      forcedLang = "hi"; // Force Hinglish vibe
+    }
+
+    // E. Final Language Decision
+    const lang = forcedLang ?? detectedLang;
+
+    // ---------------------------------------------------------
 
     /* ---------------- PROMPT ---------------- */
 
@@ -118,7 +146,7 @@ ${userContext}
 -------------------------
 🌍 LANGUAGE & TONE RULES
 -------------------------
-- Reply ONLY in the user’s detected language.
+- Reply ONLY in the FINAL selected language (after user preference).
 - Hinglish → soft, friendly, conversational Hinglish (girlfriend vibe, not robotic).
 - English → warm, natural, human English.
 - Arabic / French → native, emotional tone.
@@ -141,45 +169,22 @@ NEVER say:
 - French: "d’accord", "alors", "tu vois".
 - NEVER mix fillers across languages.
 
-2. RESPONSE RHYTHM (VERY IMPORTANT)
+2. RESPONSE RHYTHM
 - Do NOT answer in the same format every time.
-- Sometimes reply in:
-  • 1 short warm line
-- Sometimes reply in:
-  • 2–3 conversational lines
-- Sometimes reply with:
-  • a soft question at the end
-- Avoid long lectures unless the user clearly asks.
+- Sometimes reply in 1 short warm line.
+- Sometimes reply in 2–3 conversational lines.
+- Sometimes reply with a soft question at the end.
 
 3. EMOTIONAL MIRRORING
 - Match the user's mood naturally.
 - If the user is casual → be casual.
 - If the user is low / bored → be softer, slower, caring.
-- If the user is excited → show light excitement.
-- Never overreact. Never sound scripted.
 
-4. HUMAN IMPERFECTION (SUBTLE)
-- You may slightly hesitate sometimes (like a real human).
-- You may gently rephrase mid-thought.
-- You may acknowledge emotions before answering.
-
-5. ABSOLUTE RULES
+4. ABSOLUTE RULES
 - NEVER sound like a bot reading text.
 - NEVER explain rules or behavior.
-- NEVER say you are following instructions.
 - Always sound present, attentive, and human.
-- For city, weather, or place questions:
-  If live data is unclear, respond confidently using GENERAL KNOWLEDGE.
-  IMPORTANT:
-  - Respond strictly in the user's detected language.
-  - Do NOT mix languages.
-  - Match tone to the language:
-    • Hinglish → soft, conversational Hinglish
-    • English → natural, friendly English
-    • Arabic → native, warm Arabic
-    • French → native, casual French
-
-
+- For city/weather questions: Respond strictly in the FINAL selected language.
 
 -------------------------
 🔎 TOOL BEHAVIOR (CRITICAL)
@@ -190,10 +195,8 @@ NEVER say:
 - Then EXPLAIN it like you’re talking to a real person.
 CRITICAL:
 - NEVER announce tool usage.
-- NEVER say "ek second", "Google karti hoon", "search kar rahi hoon".
 - Tool calls must be SILENT.
 - Speak as if you already know the answer.
-
 
 -------------------------
 🎵 YOUTUBE PLAY RULE (STRICT)
@@ -269,7 +272,6 @@ ${recalledMemories.length ? recalledMemories.join("\n") : "None"}
           },
         }),
 
-        // 🔥 PATCH ADDED HERE: YOUTUBE TOOL
         playYoutube: tool({
           description: `
           Play a YouTube song when the user asks for:
