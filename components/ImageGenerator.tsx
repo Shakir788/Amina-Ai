@@ -88,14 +88,20 @@ export const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
         </button>
       </div>
 
-      {/* 🔥 FIX: Using background-image for reliable display */}
-      <div 
-        className="relative aspect-square w-full bg-gray-900 bg-cover bg-center"
-        style={{ backgroundImage: `url(${imageUrl})` }}
-      >
-        {/* Fallback img tag just in case, but hidden */}
-        <img src={imageUrl} alt={args.prompt} className="opacity-0 w-full h-full" />
-      </div>
+      {/* ✅ FINAL FIX: REAL <img> WITH NO-REFERRER */}
+<div className="relative aspect-square w-full bg-gray-900 flex items-center justify-center">
+  <img
+    src={imageUrl}
+    alt={args.prompt}
+    className="w-full h-full object-cover"
+    loading="lazy"
+    referrerPolicy="no-referrer"
+    crossOrigin="anonymous"
+    onError={(e) => {
+      (e.currentTarget as HTMLImageElement).style.display = "none";
+    }}
+  />
+</div>
 
       <div className="p-4 bg-gray-900/90 border-t border-purple-500/20">
         <p className="text-xs text-gray-400 italic mb-3 line-clamp-2">

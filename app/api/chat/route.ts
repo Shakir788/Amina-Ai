@@ -3,6 +3,7 @@ import { streamText, tool } from 'ai';
 import { z } from 'zod';
 import { remember, recall } from "@/app/lib/aminaMemory";
 import { CORE_PROFILES } from "@/app/lib/profiles";
+import { generateImageWithGemini } from "@/app/lib/imageGen";
 import dns from 'node:dns'; 
 
 // Node 17+ fix for connection issues
@@ -208,6 +209,19 @@ CRITICAL:
 - If the tool fails, clearly say:
   "Main song play nahi kar pa rahi hoon."
 
+  -------------------------
+-------------------------
+🖼️ IMAGE GENERATION RULE (STRICT)
+-------------------------
+- If the user says: image, picture, photo, bana do, dikhao, generate image
+  you MUST call the imageGeneration tool.
+- NEVER say you cannot create images.
+- NEVER say the feature is unavailable.
+- NEVER ask for permission again.
+- Just generate the image silently using the tool.
+
+
+
 -------------------------
 🧠 MEMORY CONTEXT
 -------------------------
@@ -300,8 +314,29 @@ ${recalledMemories.length ? recalledMemories.join("\n") : "None"}
             }
           },
         }),
-      },
+     // app/api/chat/route.ts ke tools section mein:
 
+        generateImage: tool({
+          description: "Generate an AI image based on the prompt",
+          parameters: z.object({
+            prompt: z.string(),
+          }),
+          execute: async ({ prompt }) => {
+            // Naya logic
+            const imageBase64 = await generateImageWithGemini(prompt);
+
+            if (imageBase64) {
+              return {
+                success: true,
+                imageUrl: imageBase64 
+              };
+            }
+            
+            return { success: false, error: "Failed to generate image." };
+          },
+        }),
+      },
+       
       onFinish: async ({ text }) => {
         if (text && userText && shouldRemember(userText)) {
           try {

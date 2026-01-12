@@ -1,59 +1,57 @@
-// 📂 app/lib/imageGen.ts
+export async function generateImageWithGemini(prompt: string): Promise<string | null> {
+  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
-/**
- * Image models text ko galat draw karte hain.
- * Isliye hum prompt se text / writing related instructions hata dete hain
- * aur explicitly bolte hain: no text, no letters.
- */
-
-// 🔒 REMOVE TEXT-RELATED INSTRUCTIONS
-function sanitizePrompt(prompt: string): string {
-  if (!prompt) return "";
-
-  return prompt
-    // remove common text instructions
-    .replace(
-      /(text|quote|caption|written|write|words|letters|title|logo|heading|font)[^.,]*/gi,
-      ""
-    )
-    // clean extra spaces
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export async function generateImageWithGemini(
-  prompt: string
-): Promise<{ success: boolean; imageUrl?: string; error?: string }> {
+  // ---------------------------------------------------------
+  // 1️⃣ OPTION A: GOOGLE IMAGEN 3 (Best Quality)
+  // ---------------------------------------------------------
   try {
-    console.log(`🎨 Generating art for: "${prompt}"`);
+    if (apiKey) {
+      // Imagen 3 Stable Endpoint
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`;
 
-    // 🔥 Random seed so image is different every time
-    const seed = Math.floor(Math.random() * 1_000_000);
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instances: [{ prompt: prompt }],
+          parameters: { sampleCount: 1, aspectRatio: "1:1" },
+        }),
+      });
 
-    // ✅ SANITIZE PROMPT (NO TEXT DRAWING)
-    const safePrompt = sanitizePrompt(prompt);
-
-    // 🧠 Final image prompt (visual-only)
-    const finalPrompt =
-      safePrompt.length > 0
-        ? `${safePrompt}, no text, no words, no letters`
-        : "cinematic artistic image, no text, no words, no letters";
-
-    // 🔥 Pollinations Image URL
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-      finalPrompt
-    )}?nologo=true&private=true&enhance=true&seed=${seed}&model=flux`;
-
-    // Browser image load karega directly
-    return {
-      success: true,
-      imageUrl,
-    };
-  } catch (error: any) {
-    console.error("❌ Image Gen Error:", error);
-    return {
-      success: false,
-      error: "Failed to generate image.",
-    };
+      if (response.ok) {
+        const data = await response.json();
+        const base64Image = data.predictions?.[0]?.bytesBase64Encoded;
+        
+        if (base64Image) {
+          console.log("✅ Generated with Google Imagen");
+          return `data:image/png;base64,${base64Image}`;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("⚠️ Google Image Gen failed, switching to backup...", error);
   }
+
+  // ---------------------------------------------------------
+  // 2️⃣ OPTION B: POLLINATIONS (Fixed URL)
+  // ---------------------------------------------------------
+  try {
+    const safePrompt = encodeURIComponent(prompt);
+    const randomSeed = Math.floor(Math.random() * 1000000);
+    
+    // 🛠️ FIX: 'p' hata kar 'image.pollinations.ai/prompt' kiya
+    // 'nologo=true' se image clean aayegi
+    const imageUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=1024&height=1024&seed=${randomSeed}&nologo=true&model=flux`;
+    
+    // Check karte hain ki link zinda hai ya nahi
+    const res = await fetch(imageUrl);
+    if (res.ok) {
+        console.log("✅ Generated with Pollinations Backup");
+        return imageUrl; 
+    }
+  } catch (e) {
+    console.error("❌ Both Google and Backup failed");
+  }
+
+  return null;
 }
