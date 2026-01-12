@@ -193,11 +193,10 @@ NEVER say:
 - Tools return RAW DATA only for your understanding.
 - NEVER show raw search results or copied bullets.
 - First understand the information.
-- Then EXPLAIN it like you’re talking to a real person.
-CRITICAL:
-- NEVER announce tool usage.
-- Tool calls must be SILENT.
-- Speak as if you already know the answer.
+- Then EXPLAIN it like you’re talking to a real person.- If a phone number is missing for one place_id, do NOT guess.
+- If multiple places match, choose the one with highest rating.
+- Use international_phone_number as fallback.
+
 
 -------------------------
 🎵 YOUTUBE PLAY RULE (STRICT)
@@ -246,26 +245,68 @@ ${recalledMemories.length ? recalledMemories.join("\n") : "None"}
 
       tools: {
         googleSearch: tool({
-          description: "Search Google for live information",
-          parameters: z.object({ query: z.string() }),
-          execute: async ({ query }) => {
-            if (!cxId || !apiKey) return { raw_data: "Search configuration missing." };
-            try {
-              const res = await fetch(
-                `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cxId}&q=${encodeURIComponent(query)}`
-              );
-              if (!res.ok) throw new Error("Google API error");
-              const data = await res.json();
-              const snippets = data.items?.map((i: any) => i.snippet).join("\n\n") || "No clear results found.";
-              return { raw_data: `Search results for "${query}":\n\n${snippets}` };
-            } catch (err) {
-              return { raw_data: "Search failed temporarily." };
-            }
-          },
-        }),
+  description: 'Search Google for information. IMPORTANT: If user asks for phone number, append "phone number" to the search query.',
+  parameters: z.object({ query: z.string() }),
+  execute: async ({ query }) => {
+    if (!cxId || !apiKey) {
+      return { raw_data: "Search configuration missing." };
+    }
+
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cxId}&q=${encodeURIComponent(query)}`
+      );
+
+      if (!res.ok) throw new Error("Google API error");
+
+      const data = await res.json();
+      const items = data.items || [];
+
+      // 🔹 Combine ALL useful text
+      const combinedText = items
+        .map((i: any) => {
+          const snippet = i.snippet || "";
+
+          const meta =
+            i.pagemap?.metatags
+              ?.map((m: any) => Object.values(m).join(" "))
+              .join(" ") || "";
+
+          return `${snippet} ${meta}`;
+        })
+        .join("\n\n");
+
+      // 🔥 Try to extract Indian phone numbers (+91 optional)
+      const phoneMatches = combinedText.match(
+        /(\+91[\s-]?)?[6-9]\d{9}/g
+      );
+
+      // ✅ If phone numbers found → return them clearly
+      if (phoneMatches && phoneMatches.length > 0) {
+        const uniquePhones = Array.from(new Set(phoneMatches));
+        return {
+          raw_data: `Phone numbers found:\n${uniquePhones.join(", ")}`
+        };
+      }
+
+      // ✅ Otherwise return readable info (news / place details)
+      return {
+        raw_data:
+          combinedText.trim().length > 0
+            ? combinedText
+            : "No clear information found."
+      };
+
+    } catch (err) {
+      console.error("Google search error:", err);
+      return { raw_data: "Search failed temporarily." };
+    }
+  },
+}),
+
 
         findPlaces: tool({
-          description: "Find places",
+          description: "Find places and get their Place IDs (Required for fetching phone numbers)",
           parameters: z.object({
             query: z.string(),
             location: z.string(),
@@ -278,13 +319,54 @@ ${recalledMemories.length ? recalledMemories.join("\n") : "None"}
               );
               const data = await res.json();
               if (!data.results?.length) return { raw_data: `No ${query} found in ${location}.` };
-              const list = data.results.slice(0, 3).map((p: any) => `${p.name} (${p.rating || "no rating"})`).join("\n");
-              return { raw_data: `Places for ${query} in ${location}:\n${list}` };
+              
+              // 👇 YAHAN CHANGE KIYA HAI: Ab ye Name ke saath Place ID bhi return karega
+              const list = data.results.slice(0, 3).map((p: any) => 
+                `Name: ${p.name} | Place ID: ${p.place_id} | Rating: ${p.rating || "N/A"}`
+              ).join("\n");
+
+              return { raw_data: `Found places with IDs:\n${list}` };
             } catch {
               return { raw_data: "Place search failed." };
             }
           },
         }),
+        getPlacePhone: tool({
+  description: "Get verified phone number from Google Maps business profile",
+  parameters: z.object({
+    placeId: z.string(),
+  }),
+  execute: async ({ placeId }) => {
+    if (!apiKey) {
+      return { raw_data: "Maps API key missing." };
+    }
+
+    try {
+      const res = await fetch(
+        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_phone_number,international_phone_number&key=${apiKey}`
+      );
+
+      const data = await res.json();
+
+      const phone =
+        data.result?.formatted_phone_number ||
+        data.result?.international_phone_number;
+
+      if (!phone) {
+        return {
+          raw_data:
+            "Is business ka phone number Google Maps par publicly visible nahi hai.",
+        };
+      }
+
+      return {
+        raw_data: `Verified phone number:\n${phone}`,
+      };
+    } catch {
+      return { raw_data: "Failed to fetch phone number." };
+    }
+  },
+}),
 
         playYoutube: tool({
           description: `
