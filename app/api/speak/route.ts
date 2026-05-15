@@ -21,9 +21,6 @@ const VOICE_CONFIG = {
   },
   
   // 🇮🇳 HINGLISH: The "Cute & Smart" Setup
-  // We use 'en-IN-Neural2-A' (Indian English).
-  // Why? Because it reads English words inside Hindi sentences PERFECTLY.
-  // No "Angrez" accent, no spelling out words. Just pure Indian flow.
   hi: {
     female: { name: "en-IN-Neural2-A", languageCode: "en-IN" }, 
     male:   { name: "en-IN-Neural2-C", languageCode: "en-IN" }, 
@@ -49,6 +46,23 @@ function detectLanguageFallback(text: string) {
   return "en"; 
 }
 
+// 🛡️ FALLBACK FUNCTION (Jugaad for Free Voice)
+async function useFreeFallbackTTS(text: string, lang: string = 'hi') {
+    console.log("⚡ Switching to Fast Fallback TTS...");
+    try {
+        // Google Translate TTS (Unofficial but reliable & free)
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        
+        return new Response(arrayBuffer, {
+            headers: { "Content-Type": "audio/mpeg" }
+        });
+    } catch (e) {
+        return NextResponse.json({ error: "All TTS methods failed" }, { status: 500 });
+    }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -62,7 +76,11 @@ export async function POST(req: Request) {
     if (!textToSpeak) return new Response(null, { status: 200 });
 
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "Key Missing" }, { status: 500 });
+    
+    // 🛑 Agar API Key nahi hai, seedha Fallback use karo
+    if (!apiKey) {
+        return await useFreeFallbackTTS(textToSpeak, requestedLangCode?.split('-')[0] || 'hi');
+    }
 
     // 🧠 Language Logic
     let langPrefix = "en";
@@ -83,28 +101,22 @@ export async function POST(req: Request) {
     // @ts-ignore
     const selectedVoice = VOICE_CONFIG[langPrefix][gender];
 
-    // 🎛️ AUDIO TUNING (The "Personality" Layer)
+    // 🎛️ AUDIO TUNING
     let audioConfig: any = {
         audioEncoding: "MP3",
         speakingRate: 1.0, 
         pitch: 0.0,
     };
 
-    // 🔥 HINGLISH SPECIAL SETTINGS
     if (langPrefix === 'hi') {
         if (gender === 'female') {
-            // 👩 AMINA: "Cute & Energetic"
-            // Pitch +2.5 = Young, sweet, anime-like (Not deep/robotic)
-            // Speed 1.1 = Energetic conversational flow (Not boring reading)
             audioConfig.pitch = 2.5; 
             audioConfig.speakingRate = 1.1; 
         } else {
-            // 👨 MOHAMMAD: "Professional"
             audioConfig.pitch = -1.5; 
             audioConfig.speakingRate = 1.0; 
         }
     } 
-    // 🌍 OTHER LANGUAGES (Keep Natural)
     else {
         audioConfig.speakingRate = 1.0;
         audioConfig.pitch = 0.0;
@@ -119,31 +131,48 @@ export async function POST(req: Request) {
       audioConfig: audioConfig,
     };
 
-    const response = await fetch(`${GOOGLE_TTS_URL}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
+    // 🔥 3 SECOND TIMEOUT LOGIC (Ye Naya Hai)
+    // Hum ek timer laga rahe hain. Agar 3 second mein Google ne jawab nahi diya, toh hum cancel kar denge.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 Second limit
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json({ error: "TTS API Failed", details: errorText }, { status: 500 });
+    try {
+        // 🚀 TRY PREMIUM TTS
+        const response = await fetch(`${GOOGLE_TTS_URL}?key=${apiKey}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal // Signal bhej rahe hain ki kab rukna hai
+        });
+
+        clearTimeout(timeoutId); // Agar jawab aa gaya, toh timer band karo
+
+        if (!response.ok) {
+            console.warn("Premium TTS Failed (Key Error or Quota), using fallback.");
+            return await useFreeFallbackTTS(textToSpeak, langPrefix);
+        }
+
+        const data = await response.json();
+        const audioContent = data.audioContent; 
+        const audioBuffer = Uint8Array.from(atob(audioContent), c => c.charCodeAt(0));
+
+        return new Response(audioBuffer, {
+            headers: {
+                "Content-Type": "audio/mpeg",
+                "Content-Length": audioBuffer.byteLength.toString(),
+                "X-AI-Speech": "true" 
+            },
+        });
+
+    } catch (error: any) {
+        // ⚠️ Agar Timeout (3 sec) hua ya koi error aaya, toh yahan aayega
+        console.warn("⚠️ Premium TTS took too long or failed. Switching to Backup.");
+        return await useFreeFallbackTTS(textToSpeak, langPrefix);
     }
 
-    const data = await response.json();
-    const audioContent = data.audioContent; 
-    const audioBuffer = Uint8Array.from(atob(audioContent), c => c.charCodeAt(0));
-
-    return new Response(audioBuffer, {
-      headers: {
-        "Content-Type": "audio/mpeg",
-        "Content-Length": audioBuffer.byteLength.toString(),
-        "X-AI-Speech": "true" 
-      },
-    });
-
   } catch (error: any) {
-    console.error("Server Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Server Error, trying fallback:", error);
+    // ⚠️ Koi bhi error aaye, fallback chala do
+    return await useFreeFallbackTTS("I am having trouble speaking right now.", "en");
   }
 }

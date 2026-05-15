@@ -1,8 +1,8 @@
 // app/lib/aminaMemory.ts
 // =====================================================
-// 🧠 AMINA MEMORY ENGINE v1
+// 🧠 AMINA MEMORY ENGINE v2 (Timeout Protected)
 // ChatGPT-style long-term + short-term memory
-// Uses Gemini Embeddings
+// Uses Gemini Embeddings + File System
 // =====================================================
 
 import fs from "fs";
@@ -34,7 +34,7 @@ type MemoryStore = {
 const MEMORY_DIR = path.join(process.cwd(), "data");
 const MEMORY_FILE = path.join(MEMORY_DIR, "amina.memory.json");
 
-const EMBEDDING_MODEL = "gemini-embedding-001";
+const EMBEDDING_MODEL = "text-embedding-004"; // Updated to newer model
 const MAX_MEMORIES = 500; // safe limit
 
 /* =====================================================
@@ -59,15 +59,22 @@ function loadStore(): MemoryStore {
 }
 
 function saveStore(store: MemoryStore) {
-  fs.writeFileSync(MEMORY_FILE, JSON.stringify(store, null, 2));
+  try {
+    fs.writeFileSync(MEMORY_FILE, JSON.stringify(store, null, 2));
+  } catch (e) {
+    console.error("Memory Save Failed:", e);
+  }
 }
 
 /* =====================================================
-   EMBEDDINGS
+   EMBEDDINGS (WITH TIMEOUT SHIELD 🛡️)
 ===================================================== */
 
+// 🔥 Helper: 3 Second Timeout Rule
+const timeoutPromise = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms));
+
 async function embedText(text: string): Promise<number[]> {
-  // 🔥 FIX: Agar text empty hai to crash mat karo, bas dummy array bhejo
+  // 🔥 FIX: Empty text check
   if (!text || !text.trim()) {
     return []; 
   }
@@ -76,13 +83,25 @@ async function embedText(text: string): Promise<number[]> {
     process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
     process.env.GOOGLE_API_KEY;
 
-  if (!apiKey) throw new Error("GOOGLE API KEY MISSING");
+  if (!apiKey) return []; // Bina key ke crash mat karo
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: EMBEDDING_MODEL });
 
-  const result = await model.embedContent(text);
-  return result.embedding.values;
+  try {
+    // 🏁 RACE: Google vs 3 Seconds
+    // Jo pehle khatam hoga wahi jeetega. Agar Google slow hai, toh Timeout jeet jayega.
+    const result: any = await Promise.race([
+        model.embedContent(text),
+        timeoutPromise(3000) // 3 Second Max Wait
+    ]);
+    
+    return result.embedding.values;
+
+  } catch (error) {
+    console.warn("⚠️ Memory Embedding Skipped (Timeout/Network):", error);
+    return []; // Empty bhejo taaki app ruk na jaye
+  }
 }
 
 /* =====================================================
@@ -90,8 +109,8 @@ async function embedText(text: string): Promise<number[]> {
 ===================================================== */
 
 function cosineSimilarity(a: number[], b: number[]) {
-  // Fix: Agar embedding empty ho (crash fix ki wajah se), to similarity 0 hai
-  if (!a.length || !b.length) return 0;
+  // Fix: Agar embedding empty ho, to similarity 0 hai
+  if (!a || !b || !a.length || !b.length) return 0;
 
   let dot = 0,
     na = 0,
@@ -140,9 +159,10 @@ export async function remember(
   // avoid duplicates
   if (store.memories.find((m) => m.text === text)) return;
 
+  // 🔥 Safe Embed Call
   const embedding = await embedText(text);
   
-  // Agar embedding fail hui (empty array), to save mat karo
+  // Agar embedding fail hui (Timeout/Network), to save mat karo (Taaki kachra na bhare)
   if (embedding.length === 0) return;
 
   const memory: MemoryItem = {
@@ -170,24 +190,33 @@ export async function recall(
   query: string,
   limit = 5
 ): Promise<string[]> {
-  const store = loadStore();
-  if (!store.memories.length) return [];
-  if (!query || !query.trim()) return [];
+  try {
+      const store = loadStore();
+      if (!store.memories.length) return [];
+      if (!query || !query.trim()) return [];
 
-  const queryEmbedding = await embedText(query);
-  if (queryEmbedding.length === 0) return [];
+      // 🔥 Safe Embed Call (With 3s Timeout)
+      const queryEmbedding = await embedText(query);
+      
+      // Agar embedding fail hui (Net slow), toh purani yaadein mat dhoondo, 
+      // seedha empty return karo taaki Chat na ruke.
+      if (queryEmbedding.length === 0) return [];
 
-  const ranked = store.memories
-    .map((m) => ({
-      text: m.text,
-      score: cosineSimilarity(queryEmbedding, m.embedding),
-    }))
-    .filter((x) => x.score > 0.75)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((x) => x.text);
+      const ranked = store.memories
+        .map((m) => ({
+          text: m.text,
+          score: cosineSimilarity(queryEmbedding, m.embedding),
+        }))
+        .filter((x) => x.score > 0.65) // Thoda loose kiya (0.75 -> 0.65) taaki zyada yaad aaye
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map((x) => x.text);
 
-  return ranked;
+      return ranked;
+  } catch (error) {
+      console.error("Recall Error (Ignored):", error);
+      return []; // Fail safe return
+  }
 }
 
 /**

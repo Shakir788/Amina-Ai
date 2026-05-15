@@ -14,6 +14,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import StressBuster from './StressBuster'; 
 import VisionManager from './VisionManager'; 
 
+// 🔥 HARDWARE BRIDGE IMPORT
+import { executeMobileAction } from '@/app/lib/mobile-hardware';
+
 // 🔥 BEAUTIFUL TEXT IMPORTS
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -176,10 +179,6 @@ const ThinkingIndicator = ({ theme }: { theme: any }) => (
   </div>
 );
 
-// ... (Keep CuteAvatar, ImageGenerator, InvoiceTable, YouTubePlayer, StopAction AS IS - no changes needed)
-// BUT FOR BREVITY in this fix, I assume they are defined above or imported. 
-// I will re-paste them here to ensure the code is complete for you.
-
 const CuteAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean, isListening: boolean }) => {
     return (
       <motion.div animate={{ y: [0, -6, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="relative w-60 h-60 rounded-full flex flex-col items-center justify-center bg-[#050505] border-[4px] border-purple-500/50 shadow-[0_0_60px_rgba(168,85,247,0.5),inset_0_0_40px_rgba(168,85,247,0.2)] overflow-hidden">
@@ -248,8 +247,9 @@ export default function ChatInterface() {
     ? { border: "border-blue-500", text: "text-blue-300", bg: "bg-blue-600", gradient: "from-blue-500 to-cyan-500" }
     : { border: "border-purple-500", text: "text-purple-300", bg: "bg-purple-600", gradient: "from-purple-500 to-pink-500", glow: "rgba(168, 85, 247, 0.6)" };
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages, setInput } = useChat({
-    api: "/api/chat",
+  // 🔥 UPDATED: Correct URL Hardcoded
+  const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages, setInput, data } = useChat({
+    api: "http://127.0.0.1:3000/api/chat", // 👈 FIXED: No syntax error now
     body: { data: { isAccountantMode } },
     maxSteps: 5,
     onFinish: () => {
@@ -266,6 +266,36 @@ export default function ChatInterface() {
         if(isCallActive) setStatusText("Error. Retrying...");
     },
   });
+
+  // ==========================================
+  // 🔥 UPGRADED NATIVE ASSISTANT BRIDGE (SIRI/ASSISTANT FIX)
+  // ==========================================
+  const executedActionsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!data || data.length === 0) return;
+
+    data.forEach((item: any, index: number) => {
+      const actionKey = `${item.action}_${index}`;
+
+      if (item?.type === 'HARDWARE_ACTION' && !executedActionsRef.current.has(actionKey)) {
+        console.log("⚡ [AMINA AGENT] Executing Native Tool:", item.action, item.payload);
+        executedActionsRef.current.add(actionKey);
+
+        try {
+          executeMobileAction(item.action, item.payload);
+        } catch (err) {
+          console.error("❌ Failed to trigger mobile hardware:", err);
+        }
+      }
+    });
+  }, [data]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      executedActionsRef.current.clear();
+    }
+  }, [messages]);
 
   const MAX_STORE_MESSAGES = 30;
   const storageKey = isAccountantMode ? "amina_memory_accountant" : "amina_memory_bestie";
@@ -343,7 +373,8 @@ export default function ChatInterface() {
     const signal = ttsController.current.signal;
 
     try {
-      const res = await fetch("/api/speak", { 
+      // 🔥 FIXED: Direct URL for TTS (No 404 on phone)
+      const res = await fetch("http://127.0.0.1:3000/api/speak", { 
           method: "POST", 
           headers: { "Content-Type": "application/json" }, 
           body: JSON.stringify({ text: cleanText, voice: voiceGender, lang: langForTTS }),
@@ -360,7 +391,6 @@ export default function ChatInterface() {
           setIsSpeaking(false); 
           URL.revokeObjectURL(url); 
           isAiSpeakingRef.current = false; 
-
           if (isCallActive) { 
               setTimeout(() => {
                   if (isCallActive && !isAiSpeakingRef.current) startListening(); 
@@ -381,7 +411,6 @@ export default function ChatInterface() {
 
   const startListening = () => {
     if (!isCallActive) return; 
-    
     if (isAiSpeakingRef.current) return; 
     if (isProcessingRef.current) return; 
 
@@ -392,36 +421,26 @@ export default function ChatInterface() {
     
     const recognition = new SR();
     recognitionRef.current = recognition;
-    recognition.continuous = false; 
-    recognition.interimResults = false; 
-    recognition.lang = "en-US"; 
+    recognition.continuous = false; recognition.interimResults = false; recognition.lang = "en-US";
     
     recognition.onstart = () => { 
         if (isAiSpeakingRef.current) { recognition.abort(); return; }
-        setIsListening(true); 
-        setStatusText("Listening..."); 
-        setFaceExpression("listening"); 
+        setIsListening(true); setStatusText("Listening..."); setFaceExpression("listening"); 
     };
 
     recognition.onresult = (e: any) => { 
         if (isAiSpeakingRef.current) { recognition.abort(); return; }
-
         const t = e.results?.[0]?.[0]?.transcript; 
         if (t?.trim()) { 
-            setStatusText("Thinking..."); 
-            setIsListening(false); 
-            recognition.stop();
-            setFaceExpression("thinking"); 
-            isProcessingRef.current = true;
+            setStatusText("Thinking..."); setIsListening(false); recognition.stop();
+            setFaceExpression("thinking"); isProcessingRef.current = true;
             append({ role: "user", content: t }); 
         } 
     };
 
     recognition.onerror = (e: any) => { 
         if (!isAiSpeakingRef.current && !isProcessingRef.current) {
-             setIsListening(false);
-             setStatusText("Tap to Speak");
-             setFaceExpression("idle");
+             setIsListening(false); setStatusText("Tap to Speak"); setFaceExpression("idle");
         }
     };
 
@@ -436,17 +455,8 @@ export default function ChatInterface() {
     try { recognition.start(); } catch(e){ console.error("Start Error:", e); }
   };
 
-  const handleAvatarClick = () => {
-      if (isSpeaking) {
-          stopSpeaking(); 
-          isAiSpeakingRef.current = false; 
-          isProcessingRef.current = false;
-          setTimeout(() => startListening(), 100); 
-      } else if (!isListening) {
-          startListening();
-      }
-  };
-
+  const handleAvatarClick = () => { if (isSpeaking) { stopSpeaking(); isAiSpeakingRef.current = false; isProcessingRef.current = false; setTimeout(() => startListening(), 100); } else if (!isListening) { startListening(); } };
+  
   // ... (Visuals & File Handling)
   useEffect(() => { if (isLoading) { setFaceExpression("thinking"); } else if (!isSpeaking && !isCallActive) { setFaceExpression("idle"); } }, [isLoading, isSpeaking, isCallActive]);
   useEffect(() => { const interval = setInterval(() => { if (faceExpression === "idle") { setIsBlinking(true); setTimeout(() => setIsBlinking(false), 150); } }, 4000); return () => clearInterval(interval); }, [faceExpression]);
@@ -600,7 +610,7 @@ export default function ChatInterface() {
         <div ref={messagesEndRef} />
       </main>
 
-      <footer className="fixed bottom-0 w-full p-4 bg-black/60 backdrop-blur-xl z-50 border-t border-white/5">
+      <footer className="fixed bottom-0 w-full p-4 pb-10 bg-black/60 backdrop-blur-xl z-50 border-t border-white/5">
         <div className="max-w-3xl mx-auto">
           {selectedImage && <div className="mb-2 relative w-fit animate-in slide-in-from-bottom-2"><img src={selectedImage} alt="Selected" className={`w-20 h-20 object-cover rounded-lg border ${theme.border}`} /><button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"><X size={12} fill="white" /></button></div>}
           <form onSubmit={handleFormSubmit} className="relative flex items-center gap-2 bg-white/5 border border-white/10 p-2 pl-4 rounded-full shadow-[0_0_20px_rgba(0,0,0,0.5)] focus-within:border-purple-500/50 transition-all">
