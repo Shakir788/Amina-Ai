@@ -5,7 +5,6 @@ const config: CapacitorConfig = {
   appName: 'Amina',
   webDir: 'out',
   server: {
-    url: 'http://127.0.0.1:3000', // Android emulator ke liye localhost mapping
     cleartext: true
   }
 };
