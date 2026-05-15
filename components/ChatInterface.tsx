@@ -249,7 +249,7 @@ export default function ChatInterface() {
 
   // 🔥 UPDATED: Correct URL Hardcoded
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages, setInput, data } = useChat({
-    api: "http://127.0.0.1:3000/api/chat", // 👈 FIXED: No syntax error now
+    api: "https://amina-ai.vercel.app/api/chat", 
     body: { data: { isAccountantMode } },
     maxSteps: 5,
     onFinish: () => {
@@ -373,8 +373,8 @@ export default function ChatInterface() {
     const signal = ttsController.current.signal;
 
     try {
-      // 🔥 FIXED: Direct URL for TTS (No 404 on phone)
-      const res = await fetch("http://127.0.0.1:3000/api/speak", { 
+      // 🔥 FIXED: Direct URL for TTS 
+           const res = await fetch("https://amina-ai.vercel.app/api/speak", {
           method: "POST", 
           headers: { "Content-Type": "application/json" }, 
           body: JSON.stringify({ text: cleanText, voice: voiceGender, lang: langForTTS }),
