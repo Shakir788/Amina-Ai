@@ -520,7 +520,7 @@ export default function ChatInterface() {
       <CyberBackground isAccountantMode={isAccountantMode} />
 
       {/* 🚀 GLASS HEADER */}
-      <header className="h-16 border-b border-white/5 flex items-center px-4 justify-between bg-black/60 fixed w-full top-0 z-50 backdrop-blur-xl shadow-lg">
+      <header className="pt-[max(env(safe-area-inset-top),36px)] pb-3 border-b border-white/5 flex items-center px-4 justify-between bg-black/60 fixed w-full top-0 z-50 backdrop-blur-xl shadow-lg">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-full overflow-hidden border-2 ${theme.border} relative group`}>
             <div className={`absolute inset-0 bg-${isAccountantMode ? 'blue' : 'purple'}-500/30 animate-pulse`} />
@@ -565,7 +565,7 @@ export default function ChatInterface() {
         {visionMode && (<VisionManager mode={visionMode} onClose={() => setVisionMode(null)} onAnalysisComplete={handleVisionData} />)}
       </AnimatePresence>
 
-      <main className="flex-1 overflow-y-auto pt-20 pb-24 px-4 md:px-20 lg:px-64 scroll-smooth relative z-10">
+      <main className="flex-1 overflow-y-auto pt-28 pb-24 px-4 md:px-20 lg:px-64 scroll-smooth relative z-10">
         {messages.length === 0 && (
           <WelcomeScreen theme={theme} isAccountantMode={isAccountantMode} />
         )}
