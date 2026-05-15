@@ -16,7 +16,7 @@ const config: Config = {
     },
   },
   plugins: [
-    require('@tailwindcss/typography'), // 👈 बस यह लाइन नयी है (Magic Line) 🪄
+    require('@tailwindcss/typography'), 
   ],
 };
 export default config;
