@@ -21,6 +21,9 @@ import { executeMobileAction } from '@/app/lib/mobile-hardware';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+// ⚡ REALTIME VOICE (Gemini Live)
+import { useRealtimeVoice } from './RealtimeVoice';
+
 // ==========================================
 // 1. 🌌 OPTIMIZED BACKGROUND (NO BLINKING)
 // ==========================================
@@ -230,6 +233,16 @@ export default function ChatInterface() {
   // 🔥 VISION STATE
   const [visionMode, setVisionMode] = useState<"camera" | "screen" | null>(null);
 
+  // ⚡ REALTIME LIVE MODE
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const {
+    status: rtStatus,
+    errorMsg: rtError,
+    aiSpeaking: rtSpeaking,
+    startCall: rtStart,
+    endCall: rtEnd,
+  } = useRealtimeVoice();
+
   // 🔥 CRITICAL REFS
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsController = useRef<AbortController | null>(null);
@@ -242,6 +255,7 @@ export default function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastSpokenId = useRef<string | null>(null);
+  const isLiveModeRef = useRef(false); // ⚡ realtime live mode guard (stale-closure safe)
 
   const theme = isAccountantMode 
     ? { border: "border-blue-500", text: "text-blue-300", bg: "bg-blue-600", gradient: "from-blue-500 to-cyan-500" }
@@ -410,6 +424,7 @@ export default function ChatInterface() {
   useEffect(() => { const timeoutId = setTimeout(() => { const last = messages[messages.length - 1]; if (isCallActive && last?.role === "assistant" && !isLoading && last.id !== lastSpokenId.current) { speak(last.content, last.id); } }, 500); return () => clearTimeout(timeoutId); }, [messages, isLoading, isCallActive]);
 
   const startListening = () => {
+    if (isLiveModeRef.current) return; // ⚡ live mode me turn-based mic band
     if (!isCallActive) return; 
     if (isAiSpeakingRef.current) return; 
     if (isProcessingRef.current) return; 
@@ -445,7 +460,7 @@ export default function ChatInterface() {
     };
 
     recognition.onend = () => { 
-        if (isCallActive && !isProcessingRef.current && !isAiSpeakingRef.current && !isLoading) {
+        if (!isLiveModeRef.current && isCallActive && !isProcessingRef.current && !isAiSpeakingRef.current && !isLoading) {
              startListening(); 
         } else {
             setIsListening(false);
@@ -455,7 +470,27 @@ export default function ChatInterface() {
     try { recognition.start(); } catch(e){ console.error("Start Error:", e); }
   };
 
-  const handleAvatarClick = () => { if (isSpeaking) { stopSpeaking(); isAiSpeakingRef.current = false; isProcessingRef.current = false; setTimeout(() => startListening(), 100); } else if (!isListening) { startListening(); } };
+  const handleAvatarClick = () => { if (isLiveModeRef.current) return; if (isSpeaking) { stopSpeaking(); isAiSpeakingRef.current = false; isProcessingRef.current = false; setTimeout(() => startListening(), 100); } else if (!isListening) { startListening(); } };
+
+  // ⚡ Toggle realtime live mode (turn-based ke saath collision avoid)
+  const toggleLiveMode = () => {
+    if (isLiveMode) {
+      isLiveModeRef.current = false;
+      rtEnd();
+      setIsLiveMode(false);
+      setStatusText("");
+    } else {
+      stopSpeaking();
+      if (recognitionRef.current) { try { recognitionRef.current.abort(); } catch {} }
+      isLiveModeRef.current = true;
+      setIsLiveMode(true);
+      rtStart({
+        voice: voiceGender === "female" ? "Aoede" : "Puck",
+        userName: voiceGender === "female" ? "Douaa" : "Mohammad",
+        // context: recall se memory summary daal sakte ho (Phase 2)
+      });
+    }
+  };
   
   // ... (Visuals & File Handling)
   useEffect(() => { if (isLoading) { setFaceExpression("thinking"); } else if (!isSpeaking && !isCallActive) { setFaceExpression("idle"); } }, [isLoading, isSpeaking, isCallActive]);
@@ -464,6 +499,64 @@ export default function ChatInterface() {
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) setSelectedImage(await resizeAndToDataUrl(e.target.files[0])); };
   const handleFormSubmit = async (e: React.FormEvent) => { e.preventDefault(); if ((!input?.trim() && !selectedImage) || isLoading) return; const userMessage = input; const imageToSend = selectedImage; setInput(""); setSelectedImage(null); if (imageToSend) { const userMsgId = Date.now().toString(); const newUserMsg = { id: userMsgId, role: 'user', content: userMessage || "Analyze this image", experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: imageToSend }] }; setMessages(prev => [...prev, newUserMsg as any]); const assistantMsgId = (Date.now() + 1).toString(); setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: "👀 Looking at image..." } as any]); try { const res = await fetch("/api/vision", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: userMessage || "Analyze this image" }, { type: "image", image: imageToSend }] }] }), }); const data = await res.json(); setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: data.text } : m)); } catch (err) { console.error("Vision Error:", err); setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m)); } return; } await append({ role: "user", content: userMessage }, { body: { data: { isAccountantMode } } }); };
   
+  // ==========================================
+  // 🔥 SIRI MODE: WAKE WORD LISTENER ("Hey Amina")
+  // ==========================================
+  useEffect(() => {
+    // Agar pehle se call chal rahi hai, AI bol rahi hai, ya mic on hai toh background listener band rakho
+    if (isCallActive || isListening || isAiSpeakingRef.current || isProcessingRef.current) return;
+
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+
+    const wakeWordRec = new SR();
+    wakeWordRec.continuous = true; // Humesha suno
+    wakeWordRec.interimResults = false;
+    wakeWordRec.lang = "en-US";
+
+    wakeWordRec.onresult = (e: any) => {
+      const lastIndex = e.results.length - 1;
+      const transcript = e.results[lastIndex][0].transcript.toLowerCase();
+      
+      console.log("Background hearing:", transcript);
+
+      // Agar "amina" word match ho jaye
+      if (transcript.includes("amina")) {
+        console.log("🔥 WAKE WORD DETECTED!");
+        
+        // 1. Phone Vibrate karo (Siri/Jarvis feel)
+        if (navigator.vibrate) {
+            navigator.vibrate([100, 50, 100]); 
+        }
+        
+        wakeWordRec.stop(); // Background listening band karo
+        
+        // 2. Giant Avatar wali Call Screen kholo
+        setIsCallActive(true);
+        
+        // 3. Aadhe second baad user ka sawal sunna shuru karo
+        setTimeout(() => {
+           startListening();
+        }, 800);
+      }
+    };
+
+    // Agar background mic galti se band ho jaye, toh wapas on kar do (jab tak phone idle hai)
+    wakeWordRec.onend = () => {
+      if (!isCallActive && !isListening && !isAiSpeakingRef.current && !isProcessingRef.current) {
+        try { wakeWordRec.start(); } catch(e){}
+      }
+    };
+
+    try { wakeWordRec.start(); } catch(e){}
+
+    // Cleanup function
+    return () => {
+      try { wakeWordRec.stop(); } catch(e){}
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCallActive, isListening]); 
+
   // ✅ MEMOIZED MESSAGE CONTENT RENDERING
   const MessageContent = memo(({ message, isLast, isLoading }: { message: any, isLast: boolean, isLoading: boolean }) => {
     if (!message || !message.content) return null;
@@ -551,12 +644,19 @@ export default function ChatInterface() {
       <AnimatePresence>
       {isCallActive && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
-          <button onClick={() => { setIsCallActive(false); stopSpeaking(); }} className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700 z-50"><X size={24} /></button>
-          <div className="relative cursor-pointer" onClick={handleAvatarClick}><CuteAvatar isSpeaking={isSpeaking || isListening} isListening={isListening} /><div className="absolute inset-0 flex items-center justify-center z-20">{isSpeaking ? null : isListening ? (<div className="bg-green-500 p-3 rounded-full border-2 border-black animate-bounce shadow-lg"><Mic size={24} fill="white" /></div>) : null}</div></div>
+          <button onClick={() => { setIsCallActive(false); stopSpeaking(); if (isLiveModeRef.current) { rtEnd(); setIsLiveMode(false); isLiveModeRef.current = false; } }} className="absolute top-6 right-6 p-3 bg-gray-800 rounded-full hover:bg-gray-700 z-50"><X size={24} /></button>
+          <div className="relative cursor-pointer" onClick={handleAvatarClick}><CuteAvatar isSpeaking={isLiveMode ? rtSpeaking : (isSpeaking || isListening)} isListening={isLiveMode ? (rtStatus === "live" && !rtSpeaking) : isListening} /><div className="absolute inset-0 flex items-center justify-center z-20">{isSpeaking ? null : isListening ? (<div className="bg-green-500 p-3 rounded-full border-2 border-black animate-bounce shadow-lg"><Mic size={24} fill="white" /></div>) : null}</div></div>
           <AnimatePresence>{showHeadphoneNotice && (<motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-20 bg-black/80 text-white px-4 py-2 rounded-full border border-white/20 flex items-center gap-2 text-sm backdrop-blur-md z-[110]"><Headphones size={16} className="text-purple-400" /> Use headphones for best experience! 🎧</motion.div>)}</AnimatePresence>
           <h2 className="mt-10 text-3xl font-bold text-white">{voiceGender === "female" ? "Amina" : "Mohammad"}</h2>
-          <p className={`text-lg mt-2 font-medium ${theme.text}`}>{statusText || "Tap Avatar to Start"}</p>
-          <div className="absolute bottom-12 flex items-center gap-3"><button onClick={() => setVoiceGender((v) => (v === "female" ? "male" : "female"))} className="px-6 py-3 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all">Switch Voice ({voiceGender})</button></div>
+          <p className={`text-lg mt-2 font-medium ${theme.text}`}>{isLiveMode ? (rtStatus === "live" ? (rtSpeaking ? "Amina Speaking..." : "🎙️ Listening (live)") : (rtStatus === "connecting" ? "Connecting..." : rtStatus)) : (statusText || "Tap Avatar to Start")}</p>
+          <div className="absolute bottom-12 flex flex-col items-center gap-3">
+            {/* ⚡ REALTIME LIVE MODE */}
+            <button onClick={toggleLiveMode} className={`px-8 py-3 rounded-full border font-semibold transition-all ${isLiveMode ? "bg-red-600/90 border-red-400 text-white animate-pulse" : "bg-purple-600/90 border-purple-400 text-white hover:scale-105 shadow-[0_0_20px_rgba(168,85,247,0.5)]"}`}>
+              {rtStatus === "connecting" ? "Connecting..." : isLiveMode ? "🔴 End Live Call" : "⚡ Start Live Mode"}
+            </button>
+            {isLiveMode && rtStatus === "error" && (<p className="text-red-400 text-xs max-w-xs text-center">{rtError} — tap avatar for normal mode</p>)}
+            <button onClick={() => setVoiceGender((v) => (v === "female" ? "male" : "female"))} disabled={isLiveMode} className="px-6 py-3 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed">Switch Voice ({voiceGender})</button>
+          </div>
         </motion.div>
       )}
       </AnimatePresence>

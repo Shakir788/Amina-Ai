@@ -1,0 +1,125 @@
+# 🌙 Amina AI — Complete Feature Roadmap
+
+**Stack:** Next.js + Capacitor (web + Android) · Gemini API (paid) · Google Cloud TTS · WebSocket realtime
+
+---
+
+## ✅ ALREADY BUILT (tera foundation)
+
+| Feature | File | Status |
+|---|---|---|
+| Semantic memory (Gemini embeddings) | `aminaMemory.ts` | ✅ working, 3s timeout-protected |
+| User detection (Douaa vs Mohammad) | `profiles.ts` | ✅ language-based |
+| Hardware bridge (torch, camera, call, whatsapp, youtube) | `mobile-hardware.ts` | ✅ working |
+| Vision (camera + screen live analysis) | `app/api/vision` | ✅ cooldown + dedupe |
+| Voice (turn-based STT→chat→TTS) | `api/chat` + `api/speak` | ⚠️ slow ping-pong |
+| Realtime WebSocket server | `realtime-server.js` | ⚠️ built but unused/orphaned |
+| Quran + Accountant modules | `api/quran`, `api/accountant` | ✅ |
+
+---
+
+## 🎯 PHASE 1 — REAL-TIME VOICE (walkie-talkie / human call feel)
+> **Ye sabse bada "wow". Isko pehle finish karo.**
+
+### 1.1 Gemini Live API realtime voice ⭐⭐⭐
+- **What:** Bolte hue hi Amina reply karna shuru kare, beech me tok sako (barge-in), native multilingual.
+- **How:** `@google/genai` → `ai.live.connect()` with `Modality.AUDIO`. Mic 16kHz PCM stream → Gemini → 24kHz audio wapas.
+- **Files:** `realtime-server.js` (rewrite) + `components/RealtimeVoice.tsx` (new hook) + wire into `ChatInterface.tsx`
+- **Critical fixes (warna break hoga):**
+  - 🔴 `echoCancellation: true, noiseSuppression: true, autoGainControl: true` in getUserMedia (echo/feedback fix)
+  - 🟡 `AudioWorklet` use karo (ScriptProcessorNode deprecated, Android pe glitch)
+  - 🟡 Auto-reconnect on WS drop
+- **Effort:** ~1 din
+
+### 1.2 Voice picker (multi-voice, multi-language) ⭐⭐
+- **What:** Settings me voice choose karo — Hindi/Hinglish natural, Arabic cute, French.
+- **Gemini Live voices:** Puck, Charon, Kore, Fenrir, Aoede (warm female), Leda, Orus, Zephyr
+- **How:** `VOICE_NAME` ko dynamic banao — client se server ko bhejo `startCall(voiceName)`.
+- **Effort:** 2 ghante
+
+### 1.3 Call screen UX (waveform + status) ⭐
+- **What:** Bolte waqt animated waveform, "listening / speaking / connecting" indicator, mute button, end-call.
+- **How:** Web Audio `AnalyserNode` se live amplitude → canvas waveform.
+- **Effort:** half day
+
+---
+
+## 🎯 PHASE 2 — SMART BRAIN (memory + personality realtime me bhi)
+> **Abhi realtime mode memory/tools skip kar deta hai — ye gap bharo.**
+
+### 2.1 Memory injection in realtime ⭐⭐⭐
+- **What:** Live call me bhi Amina purani baatein yaad rakhe (Douaa/Mohammad recognize kare).
+- **How:** `ai.live.connect()` ke `systemInstruction` me `recall()` se relevant memories + profile inject karo call start pe. Call end pe `remember()` se naya context save.
+- **Effort:** half day
+
+### 2.2 Tool calling in realtime (torch/camera/whatsapp voice se) ⭐⭐
+- **What:** "Amina flashlight on karo" bol ke — hardware voice se control.
+- **How:** Gemini Live `tools` config me function declarations pass karo → `toolCall` message aaye to `mobile-hardware.ts` functions run karo → result wapas.
+- **Effort:** 1 din
+
+### 2.3 Persistent personality / mood ⭐
+- **What:** Amina ka consistent tone (warm, caring), user mood detect kar ke soft/cheerful adjust.
+- **How:** Rolling emotion tag memory me store + systemInstruction me feed.
+- **Effort:** half day
+
+---
+
+## 🎯 PHASE 3 — MULTIMODAL "WOW"
+
+### 3.1 Live vision in call ⭐⭐
+- **What:** Call ke dauraan camera on — "ye dekho" bol ke Amina real-time react kare.
+- **How:** Gemini Live video frames support karta hai — camera frame periodically `sendRealtimeInput({ video })`.
+- **Effort:** 1 din
+
+### 3.2 Wake word ("Hey Amina") ⭐⭐
+- **What:** Bina touch kiye "Hey Amina" bolke activate.
+- **How:** On-device wake word (Porcupine/Picovoice) ya lightweight always-on STT listener.
+- **Effort:** 1 din
+
+### 3.3 Live translation mode ⭐
+- **What:** Dono taraf real-time translate (Hindi↔Arabic↔French).
+- **How:** Gemini Live systemInstruction: "translate everything between X and Y".
+- **Effort:** 2 ghante
+
+---
+
+## 🎯 PHASE 4 — POLISH & PRODUCTION
+
+### 4.1 WebSocket hosting for production 🔴
+- **What:** Vercel pe WS nahi chalta. Deploy ke liye alag host.
+- **How:** Railway / Render / Fly.io pe `realtime-server.js` deploy → client me `WSS_URL` env var.
+- **Effort:** 2 ghante
+
+### 4.2 Android permissions + build 🔴
+- **What:** Capacitor me mic silently fail hota hai bina config ke.
+- **How:** `AndroidManifest.xml` me `RECORD_AUDIO`, Capacitor permissions plugin, webview mic allow.
+- **Effort:** 2 ghante
+
+### 4.3 Offline queue + error fallback ⭐
+- **What:** Net slow ho to graceful fallback to turn-based mode (jo already bana hai).
+- **How:** `rtStatus === "error"` → purana `startListening()`/`speak()` auto-activate.
+- **Effort:** 2 ghante
+
+### 4.4 Latency optimization ⭐
+- **What:** Sabse fast response feel.
+- **How:** Smaller audio chunks (2048), preconnect WS, warm session pool.
+- **Effort:** half day
+
+---
+
+## 📌 RECOMMENDED ORDER (aaj se)
+
+1. **1.1 Realtime voice** (echo-fix ke saath) — core wow
+2. **1.2 Voice picker** — multilingual
+3. **2.1 Memory in realtime** — Amina "yaad rakhne" wali
+4. **2.2 Voice tool calling** — hardware voice se
+5. **4.1 + 4.2 Hosting + Android** — taaki phone pe actually chale
+6. Baaki phases as bandwidth allows
+
+---
+
+## ⚠️ Top 4 gotchas (pehle se dhyaan)
+1. 🔴 **Echo/feedback** → `echoCancellation: true` MUST
+2. 🔴 **Vercel ≠ WebSocket** → Railway/Render chahiye
+3. 🔴 **Android mic permission** → manifest + Capacitor config
+4. 🟡 **Model name change** → `gemini-2.0-flash-live-001` fail ho to `gemini-live-2.5-flash-preview`
