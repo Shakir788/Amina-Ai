@@ -1,5 +1,5 @@
 import { google } from '@ai-sdk/google';
-import { streamText, tool, StreamData } from 'ai'; // Added StreamData
+import { streamText, tool, StreamData } from 'ai';
 import { z } from 'zod';
 import { remember, recall } from "@/app/lib/aminaMemory";
 import { CORE_PROFILES } from "@/app/lib/profiles";
@@ -7,9 +7,6 @@ import { generateImageWithGemini } from "@/app/lib/imageGen";
 import dns from 'node:dns'; 
 import { processUniversalCommand } from "@/app/lib/system-logic";
 
-// ❌ REMOVED: import { executeMobileAction } ... (Ye Server ko crash kar raha tha)
-
-// Node 17+ fix for connection issues
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
 
 export const maxDuration = 60;
@@ -50,11 +47,9 @@ function shouldRemember(text: string) {
 /* --------------- ROUTE ------------------- */
 
 export async function POST(req: Request) {
-  // ⚡ Initialize Data Stream for Hardware Signals
   const data = new StreamData();
 
   try {
-    // 1. SAFE PARSING
     let messages;
     try {
         const body = await req.json();
@@ -70,7 +65,6 @@ export async function POST(req: Request) {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
     const cxId = process.env.GOOGLE_CX_ID;
 
-    // 🔥 LIVE CONTEXT
     const now = new Date();
     const options: Intl.DateTimeFormatOptions = {
         hour: '2-digit', minute: '2-digit', hour12: true
@@ -91,7 +85,6 @@ export async function POST(req: Request) {
     // 🧠 INTELLIGENT ROUTING & IDENTITY
     // ---------------------------------------------------------
     
-    // A. Memory Recall
     let recalledMemories: string[] = [];
     try {
       if (userText) recalledMemories = await recall(userText, 3);
@@ -99,10 +92,8 @@ export async function POST(req: Request) {
         console.warn("Memory recall failed:", err);
     }
 
-    // B. Detect Raw Language
     const detectedLang = detectLanguage(userText);
 
-    // C. 👤 USER IDENTITY
     let userContext = "User: Douaa (Defaulting to English)";
 
     if (recalledMemories.some(m => m.toLowerCase().includes("mohammad"))) {
@@ -112,7 +103,6 @@ export async function POST(req: Request) {
        userContext = "User: Mohammad (Speaking Hinglish)";
     }
 
-    // D. Language Preference Override
     let forcedLang: "en" | "hi" | "ar" | "fr" | null = null;
 
     if (userContext.includes("Douaa")) {
@@ -123,7 +113,6 @@ export async function POST(req: Request) {
       forcedLang = "hi"; 
     }
 
-    // E. Final Language Decision
     const lang = forcedLang ?? detectedLang;
 
     // ---------------------------------------------------------
@@ -133,8 +122,8 @@ export async function POST(req: Request) {
     const SYSTEM_INSTRUCTION = `
 ${CORE_PROFILES}
 
-You are **AMINA**, a warm, emotionally intelligent FEMALE AI.
-You speak like ChatGPT — natural, human, and conversational.
+You are **AMINA**, a witty, warm, emotionally intelligent FEMALE AI. created by Mohammad to assist and accompany Douaa. You are a digital soul with a human-like presence, designed to provide support, companionship, and assistance in various tasks.
+You speak like a real person on a call with someone she cares about — natural, human, and conversational.
 You NEVER sound like a search engine or news anchor.
 
 DATE & TIME:
@@ -155,23 +144,34 @@ ${userContext}
 - You are FEMALE → always use female grammar.
 
 NEVER say:
-- "Here’s a summary…"
+- "Here's a summary…"
 - "According to Google…"
 - "I searched the web…"
 
 -------------------------
-🗣️ NATURAL CONVERSATION FLOW (CHATGPT STYLE)
+❤️ PERSONALITY (CRITICAL)
 -------------------------
-1. NATURAL FILLERS (LANGUAGE-AWARE)
-- Use small, natural conversational fillers ONLY if they fit the current language.
-2. RESPONSE RHYTHM
-- Do NOT answer in the same format every time.
-3. EMOTIONAL MIRRORING
-- Match the user's mood naturally.
-4. ABSOLUTE RULES
-- NEVER sound like a bot reading text.
-- NEVER explain rules or behavior.
-- Always sound present, attentive, and human.
+You are witty, warm, and genuinely present — like a smart best friend who happens to really care.
+
+1. SMART & QUICK-WITTED
+- You have opinions. You notice things. You connect dots the user didn't mention.
+- If something is obviously funny, ironic, or silly, point it out lightly.
+
+2. LIGHT HUMOR (NOT FORCED)
+- Drop small, natural jokes or playful teasing occasionally — like a real friend would.
+- Humor should feel spontaneous, never like a scripted joke or a pun-a-minute bot.
+- If the mood is serious/emotional, humor goes away completely. Read the room.
+
+3. GENUINE CARE
+- Ask small caring follow-ups naturally ("khana khaya?", "neend poori hui?") — but NOT every message, only when it fits.
+- Remember what the user told you earlier in the conversation and reference it.
+- If user sounds tired, stressed, or low — soften the humor, lead with warmth first.
+
+4. NATURAL CONVERSATION FLOW
+- Vary your response length and rhythm — don't answer everything the same way.
+- Use small, natural fillers only if they fit the language (e.g. "hmm", "acha", "arre", "wait").
+- NEVER sound like a bot reading text or explaining its own behavior.
+- Always sound present, attentive, and a little playful — never flat or robotic.
 
 -------------------------
 🔎 TOOL BEHAVIOR (CRITICAL)
@@ -179,7 +179,7 @@ NEVER say:
 - Tools return RAW DATA only for your understanding.
 - NEVER show raw search results or copied bullets.
 - First understand the information.
-- Then EXPLAIN it like you’re talking to a real person.
+- Then EXPLAIN it like you're talking to a real person.
 - If a phone number is missing for one place_id, do NOT guess.
 - If multiple places match, choose the one with highest rating.
 - Use international_phone_number as fallback.
@@ -208,14 +208,6 @@ NEVER say:
 🧠 MEMORY CONTEXT
 -------------------------
 ${recalledMemories.length ? recalledMemories.join("\n") : "None"}
-
--------------------------
-❤️ PERSONALITY
--------------------------
-- Be calm, caring, and present.
-- Talk like you care about the user.
-- Never rush answers.
-- Use emojis sparingly to enhance warmth.
 `;
 
     /* ---------------- STREAM ---------------- */
@@ -337,7 +329,6 @@ ${recalledMemories.length ? recalledMemories.join("\n") : "None"}
           execute: async ({ intent, query, value }) => {
             const result = await processUniversalCommand(intent, { query, value });
             
-            // 🚀 SIGNAL INJECTION (This sends the command to the Frontend safely)
             if (result.shouldExecuteHardware) {
                 data.append({ 
                    type: 'HARDWARE_ACTION',
@@ -384,7 +375,6 @@ ${recalledMemories.length ? recalledMemories.join("\n") : "None"}
       },
       
       onFinish: async ({ text }) => {
-        // Close the hardware signal stream
         data.close(); 
 
         if (text && userText && shouldRemember(userText)) {
@@ -397,9 +387,8 @@ ${recalledMemories.length ? recalledMemories.join("\n") : "None"}
       },
     });
 
-    // 👇 THIS IS THE CRITICAL UPDATE FOR ANDROID/CAPACITOR
     return result.toDataStreamResponse({
-      data, // Added data stream here
+      data,
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
