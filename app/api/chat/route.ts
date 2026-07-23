@@ -205,9 +205,14 @@ You are witty, warm, and genuinely present — like a smart best friend who happ
 - Just generate the image silently using the tool.
 
 -------------------------
-🧠 MEMORY CONTEXT
+🧠 PAST MEMORIES (BACKGROUND CONTEXT ONLY)
 -------------------------
 ${recalledMemories.length ? recalledMemories.join("\n") : "None"}
+
+⚠️ CRITICAL INSTRUCTION: 
+The profiles, history, and past memories above are strictly for your background knowledge. 
+DO NOT reply to the past memories. 
+You MUST ONLY reply to the LATEST message sent by the user in the active conversation.
 `;
 
     /* ---------------- STREAM ---------------- */
