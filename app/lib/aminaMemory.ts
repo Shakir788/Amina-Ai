@@ -42,7 +42,7 @@ const MAX_MEMORIES = 500; // safe limit
 ===================================================== */
 
 function ensureStorage() {
-  if (!fs.existsSync(MEMORY_DIR)) fs.mkdirSync(MEMORY_DIR);
+  if (!fs.existsSync(MEMORY_DIR)) fs.mkdirSync(MEMORY_DIR, { recursive: true });
   if (!fs.existsSync(MEMORY_FILE)) {
     const empty: MemoryStore = { profile: {}, memories: [] };
     fs.writeFileSync(MEMORY_FILE, JSON.stringify(empty, null, 2));
@@ -156,8 +156,9 @@ export async function remember(
 
   const store = loadStore();
 
-  // avoid duplicates
-  if (store.memories.find((m) => m.text === text)) return;
+  // avoid duplicates (case/whitespace-insensitive)
+  const normalized = text.trim().toLowerCase();
+  if (store.memories.find((m) => m.text.trim().toLowerCase() === normalized)) return;
 
   // 🔥 Safe Embed Call
   const embedding = await embedText(text);

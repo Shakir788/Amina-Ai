@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: process.env.VERCEL ? undefined : 'export', 
+ output: process.env.BUILD_FOR_CAPACITOR ? 'export' : undefined,
   images: {
     unoptimized: true, 
   },

@@ -11,3 +11,28 @@ body {
   background-color: #000000; /* Pitch Black */
   color: #ffffff;
 }
+/* 🔥 THE ULTIMATE CLERK WATERMARK & DEV MODE KILLER 🔥 */
+
+/* 1. Seedha Clerk ke link ko pakad kar gayab kar dega */
+a[href*="clerk.com"], 
+a[href*="clerk.dev"] {
+    display: none !important;
+}
+
+/* 2. Footer (Sign up wali line) ke BAAD jo bhi aayega (Dev mode badge), usko uda dega */
+.custom-clerk-footer ~ div,
+.cl-footer ~ div {
+    display: none !important;
+}
+
+/* 3. Agar badge footer ke andar chhupa hai, toh extra divs ko hide karega */
+.custom-clerk-footer > div:nth-child(n+2) {
+    display: none !important;
+}
+/* 🔥 Force Clerk Popover Menu Text & Icons to be White */
+.cl-userButtonPopoverActionButtonText,
+.cl-userPreviewSecondaryIdentifier,
+.cl-userButtonPopoverActionButtonIconBox svg {
+    color: #ffffff !important;
+}
+
