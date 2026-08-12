@@ -358,16 +358,20 @@ You MUST ONLY reply to the LATEST message sent by the user in the active convers
             }
           },
         }),
-      
+
+        // 🔧 FIXED: generateImageWithGemini() already returns
+        // { success, imageUrl } (or { success:false, error }) — the old
+        // code re-wrapped that whole object as "imageUrl", which broke
+        // every image (imageUrl was an object, not a usable data URL).
         generateImage: tool({
-          description: "Generate an AI image based on the prompt",
+          description: "Generate a brand-new AI image from a text description (not for editing an existing photo — use editImage for that).",
           parameters: z.object({ prompt: z.string() }),
           execute: async ({ prompt }) => {
-            const imageBase64 = await generateImageWithGemini(prompt);
-            if (imageBase64) {
-              return { success: true, imageUrl: imageBase64 };
+            const result = await generateImageWithGemini(prompt);
+            if (result?.success && result.imageUrl) {
+              return { success: true, imageUrl: result.imageUrl };
             }
-            return { success: false, error: "Failed to generate image." };
+            return { success: false, error: result?.error || "Failed to generate image." };
           },
         }),
       },

@@ -2,11 +2,13 @@ export async function generateImageWithGemini(prompt: string): Promise<any> {
   const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
   // ---------------------------------------------------------
-  // 1️⃣ OPTION A: GOOGLE IMAGEN 3
+  // 1️⃣ OPTION A: GOOGLE IMAGEN 4
+  //    (imagen-3.0-generate-001 is no longer in the available
+  //    models list — swapped to imagen-4.0-generate-001)
   // ---------------------------------------------------------
   try {
     if (apiKey) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
 
       const response = await fetch(url, {
         method: "POST",
@@ -22,13 +24,15 @@ export async function generateImageWithGemini(prompt: string): Promise<any> {
         const base64Image = data.predictions?.[0]?.bytesBase64Encoded;
         
         if (base64Image) {
-          console.log("✅ Generated with Google Imagen");
+          console.log("✅ Generated with Google Imagen 4");
           // 👇 IMPORTANT: Object Format Return Karo
           return {
             success: true,
             imageUrl: `data:image/png;base64,${base64Image}`
           };
         }
+      } else {
+        console.warn("⚠️ Imagen 4 request failed:", response.status, await response.text().catch(() => ""));
       }
     }
   } catch (error) {

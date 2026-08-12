@@ -34,7 +34,8 @@ type MemoryStore = {
 const MEMORY_DIR = path.join(process.cwd(), "data");
 const MEMORY_FILE = path.join(MEMORY_DIR, "amina.memory.json");
 
-const EMBEDDING_MODEL = "text-embedding-004"; // Updated to newer model
+// 🔥 FIX: Added the missing EMBEDDING_MODEL constant
+const EMBEDDING_MODEL = "embedding-001";
 const MAX_MEMORIES = 500; // safe limit
 
 /* =====================================================

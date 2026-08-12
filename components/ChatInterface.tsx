@@ -3,18 +3,18 @@
 import { useChat } from "ai/react";
 import {
   Send, Mic, Paperclip, Phone, X, Trash2,
-  Briefcase, Heart, Music, MapPin, Calculator, Sparkles,
+  Heart, Music, MapPin, Sparkles,
   Mail, Calendar, CheckCircle, Square, Download,
   Image as ImageIcon, Loader2, Gamepad2,
   Clock, CloudSun, Wind, Droplets, Search, Headphones,
-  Video, Monitor, Menu, ChevronDown, ShoppingBag
+  Video, Monitor, Menu, ShoppingBag
 } from "lucide-react";
 import React, { useRef, useEffect, useState, ChangeEvent, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import StressBuster from './StressBuster';
 import VisionManager from './VisionManager';
 
-// Hardware bridge (mobile actions triggered by tool calls)
+// Hardware bridge
 import { executeMobileAction } from '@/app/lib/mobile-hardware';
 
 import ReactMarkdown from 'react-markdown';
@@ -24,53 +24,36 @@ import { useRealtimeVoice } from './RealtimeVoice';
 import ChatSidebar from './ChatSidebar';
 
 // ==========================================================
-// DESIGN TOKENS — light, dreamy, pastel. Two moods sharing the
-// same airy structure: "Amina" (violet → pink) and
-// "Amina CPA" (sky → teal). Everything sits on a soft gradient
-// sky, framed inside a floating white card.
+// DESIGN TOKENS
 // ==========================================================
 const THEME = {
-  personal: {
-    id: "personal",
-    label: "Amina",
-    from: "#A855F7",
-    to: "#F472B6",
-    soft: "#F3E8FF",
-    text: "#7C3AED",
-    sky: "linear-gradient(160deg, #FDEBF3 0%, #F3E7FB 35%, #E4D3F5 70%, #D9C2EE 100%)",
-    icon: Heart,
-  },
-  accountant: {
-    id: "accountant",
-    label: "Amina CPA",
-    from: "#38BDF8",
-    to: "#2DD4BF",
-    soft: "#E0F7FA",
-    text: "#0E7490",
-    sky: "linear-gradient(160deg, #E8F9FB 0%, #DFF3F7 35%, #CFEAF0 70%, #BFE0EA 100%)",
-    icon: Briefcase,
-  },
+  id: "personal",
+  label: "Amina",
+  from: "#A855F7",
+  to: "#F472B6",
+  soft: "#F3E8FF",
+  text: "#7C3AED",
+  sky: "linear-gradient(160deg, #FDEBF3 0%, #F3E7FB 35%, #E4D3F5 70%, #D9C2EE 100%)",
+  icon: Heart,
 };
 
 // ==========================================================
-// BACKGROUND — soft pastel "sky" gradient with a couple of
-// slow-drifting glow blobs, glimpsed around the floating card.
+// BACKGROUND
 // ==========================================================
-const AmbientBackground = memo(({ mode }: { mode: "personal" | "accountant" }) => {
-  const t = THEME[mode];
+const AmbientBackground = memo(() => {
   return (
-    <div className="fixed inset-0 z-0 pointer-events-none transform-gpu" style={{ background: t.sky }}>
+    <div className="fixed inset-0 z-0 pointer-events-none transform-gpu" style={{ background: THEME.sky }}>
       <motion.div
         animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
         transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
         className="absolute top-[-10%] left-[10%] w-[420px] h-[420px] rounded-full blur-[100px] opacity-40"
-        style={{ background: t.from }}
+        style={{ background: THEME.from }}
       />
       <motion.div
         animate={{ x: [0, -25, 0], y: [0, 25, 0] }}
         transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
         className="absolute bottom-[-10%] right-[10%] w-[460px] h-[460px] rounded-full blur-[110px] opacity-40"
-        style={{ background: t.to }}
+        style={{ background: THEME.to }}
       />
     </div>
   );
@@ -107,50 +90,30 @@ const TypewriterEffect = ({ content, isLast, isLoading }: { content: string; isL
 };
 
 // ==========================================================
-// WELCOME SCREEN — greeting + suggestion cards + centered input
+// WELCOME SCREEN
 // ==========================================================
-const SUGGESTIONS = {
-  personal: [
-    { icon: ShoppingBag, title: "Create product photos", desc: "Turn a garment photo into a model shot", prompt: "Help me create product photos for a new dress." },
-    { icon: Calendar, title: "Plan my day", desc: "Lay out today's priorities together", prompt: "Help me plan my day." },
-    { icon: Music, title: "Play something", desc: "Ask Amina to play music or set the mood", prompt: "Play some relaxing music for me." },
-  ],
-  accountant: [
-    { icon: Calculator, title: "Today's numbers", desc: "Walk through today's sales and expenses", prompt: "Give me a summary of today's numbers." },
-    { icon: Briefcase, title: "New invoice", desc: "Draft an invoice for a recent order", prompt: "Help me create a new invoice." },
-    { icon: CheckCircle, title: "Monthly review", desc: "Check in on this month's totals", prompt: "Summarize this month's finances so far." },
-  ],
-};
+const SUGGESTIONS = [
+  { icon: ShoppingBag, title: "Create product photos", desc: "Turn a garment photo into a model shot", prompt: "Help me create product photos for a new dress." },
+  { icon: Calendar, title: "Plan my day", desc: "Lay out today's priorities together", prompt: "Help me plan my day." },
+  { icon: Music, title: "Play something", desc: "Ask Amina to play music or set the mood", prompt: "Play some relaxing music for me." },
+];
 
 const WelcomeScreen = memo(
-  ({
-    mode,
-    name,
-    onPick,
-  }: {
-    mode: "personal" | "accountant";
-    name: string;
-    onPick: (prompt: string) => void;
-  }) => {
-    const t = THEME[mode];
-    const cards = SUGGESTIONS[mode];
+  ({ name, onPick }: { name: string; onPick: (prompt: string) => void }) => {
     return (
       <div className="w-full max-w-2xl flex flex-col items-center text-center px-4">
         <h1 className="text-4xl md:text-5xl font-semibold tracking-tight mb-2">
           <span className="text-[#231A2E]">Hello </span>
-          <span
-            className="bg-clip-text text-transparent"
-            style={{ backgroundImage: `linear-gradient(135deg, ${t.from}, ${t.to})` }}
-          >
+          <span className="bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(135deg, ${THEME.from}, ${THEME.to})` }}>
             {name}
           </span>
         </h1>
         <p className="text-xl md:text-2xl text-[#B0A6C0] font-medium mb-8">
-          {mode === "accountant" ? "Ready when your books are." : "How can I help you today?"}
+          How can I help you today?
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
-          {cards.map((c) => {
+          {SUGGESTIONS.map((c) => {
             const Icon = c.icon;
             return (
               <button
@@ -158,10 +121,7 @@ const WelcomeScreen = memo(
                 onClick={() => onPick(c.prompt)}
                 className="text-left p-4 rounded-2xl border border-black/5 bg-white/70 hover:bg-white transition-colors shadow-sm"
               >
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center mb-3"
-                  style={{ background: `linear-gradient(135deg, ${t.from}, ${t.to})` }}
-                >
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-3" style={{ background: `linear-gradient(135deg, ${THEME.from}, ${THEME.to})` }}>
                   <Icon size={15} className="text-white" />
                 </div>
                 <div className="text-sm font-medium text-[#231A2E] mb-1">{c.title}</div>
@@ -179,18 +139,17 @@ WelcomeScreen.displayName = "WelcomeScreen";
 // ==========================================================
 // TOOL INVOCATION RENDERING
 // ==========================================================
-const RenderToolInvocation = memo(({ toolInvocation, mode }: { toolInvocation: any; mode: "personal" | "accountant" }) => {
+const RenderToolInvocation = memo(({ toolInvocation }: { toolInvocation: any }) => {
   const { toolName, args, result } = toolInvocation;
-  const t = THEME[mode];
 
-  if (toolName === "generateImage") return <ImageGenerator toolInvocation={toolInvocation} mode={mode} />;
+  if (toolName === "generateImage") return <ImageGenerator toolInvocation={toolInvocation} />;
   if (toolName === "playYoutube") return <YouTubePlayer toolInvocation={toolInvocation} />;
   if (toolName === "stopMusic") return <StopAction />;
 
   if (toolName === "showSearchVisuals" || toolName === "googleSearch") {
     return (
       <div className="mt-2 flex items-center gap-2 text-xs text-[#9B92AA] bg-white/70 p-2 rounded-lg border border-black/5 w-fit">
-        <Search size={12} style={{ color: t.text }} className="animate-pulse" />
+        <Search size={12} style={{ color: THEME.text }} className="animate-pulse" />
         <span>Searching for: <span className="text-[#231A2E] font-medium">{args.query}</span>…</span>
       </div>
     );
@@ -200,11 +159,11 @@ const RenderToolInvocation = memo(({ toolInvocation, mode }: { toolInvocation: a
     if (!result) return <div className="mt-2 animate-pulse text-xs text-[#B0A6C0] flex gap-2"><Clock size={14} /> Checking time…</div>;
     return (
       <div className="mt-3 p-4 bg-white/80 border border-black/5 rounded-xl max-w-xs shadow-sm flex items-center gap-4">
-        <div className="p-3 rounded-full" style={{ background: t.soft, color: t.text }}><Clock size={22} /></div>
+        <div className="p-3 rounded-full" style={{ background: THEME.soft, color: THEME.text }}><Clock size={22} /></div>
         <div>
           <div className="text-2xl font-semibold text-[#231A2E]">{result.time}</div>
           <div className="text-xs text-[#9B92AA]">{result.date}</div>
-          <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: t.text }}>📍 {result.location}</div>
+          <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: THEME.text }}>📍 {result.location}</div>
         </div>
       </div>
     );
@@ -218,12 +177,12 @@ const RenderToolInvocation = memo(({ toolInvocation, mode }: { toolInvocation: a
         <div className="flex justify-between items-start mb-2">
           <div>
             <div className="text-3xl font-semibold text-[#231A2E]">{result.temperature}</div>
-            <div className="text-sm" style={{ color: t.text }}>{result.condition}</div>
+            <div className="text-sm" style={{ color: THEME.text }}>{result.condition}</div>
           </div>
-          <CloudSun size={30} style={{ color: t.from }} />
+          <CloudSun size={30} style={{ color: THEME.from }} />
         </div>
         <div className="flex gap-4 mt-3 pt-3 border-t border-black/5">
-          <div className="flex items-center gap-1.5 text-xs text-[#5B5468]"><Droplets size={12} style={{ color: t.text }} /> {result.humidity}</div>
+          <div className="flex items-center gap-1.5 text-xs text-[#5B5468]"><Droplets size={12} style={{ color: THEME.text }} /> {result.humidity}</div>
           <div className="flex items-center gap-1.5 text-xs text-[#5B5468]"><Wind size={12} className="text-[#9B92AA]" /> {result.wind}</div>
         </div>
         <div className="text-[10px] text-right text-[#B0A6C0] mt-2 uppercase tracking-wider">📍 {result.location}</div>
@@ -232,10 +191,10 @@ const RenderToolInvocation = memo(({ toolInvocation, mode }: { toolInvocation: a
   }
 
   if (toolName === "showMap") {
-    const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`;
+    const mapSrc = `https://www.google.com/maps?q=$${encodeURIComponent(args.location)}&output=embed`;
     return (
       <div className="mt-3 w-full max-w-md bg-white/80 rounded-xl overflow-hidden border border-black/5 shadow-sm">
-        <div className="p-2 font-medium flex gap-2 text-sm" style={{ background: t.soft, color: t.text }}><MapPin size={14} /> Location</div>
+        <div className="p-2 font-medium flex gap-2 text-sm" style={{ background: THEME.soft, color: THEME.text }}><MapPin size={14} /> Location</div>
         <div className="h-48"><iframe width="100%" height="100%" frameBorder="0" src={mapSrc} allowFullScreen /></div>
       </div>
     );
@@ -244,9 +203,9 @@ const RenderToolInvocation = memo(({ toolInvocation, mode }: { toolInvocation: a
   if (toolName === "scheduleEvent") {
     return (
       <div className="mt-2 p-3 bg-white/80 border border-black/5 rounded-lg flex items-center gap-3 shadow-sm">
-        <Calendar style={{ color: t.from }} />
+        <Calendar style={{ color: THEME.from }} />
         <div>
-          <div className="text-xs font-medium" style={{ color: t.text }}>Event scheduled</div>
+          <div className="text-xs font-medium" style={{ color: THEME.text }}>Event scheduled</div>
           <div className="text-sm text-[#231A2E]">{args.title} on {args.date}</div>
         </div>
         <CheckCircle className="ml-auto text-emerald-500" size={16} />
@@ -257,14 +216,14 @@ const RenderToolInvocation = memo(({ toolInvocation, mode }: { toolInvocation: a
   if (toolName === "sendEmail") {
     return (
       <div className="mt-3 w-full max-w-sm bg-white/80 rounded-xl border border-black/5 shadow-sm">
-        <div className="p-3 border-b border-black/5 flex items-center gap-2" style={{ background: t.soft }}>
-          <div className="p-1.5 rounded-full" style={{ background: t.from }}><Mail size={12} className="text-white" /></div>
-          <span className="text-sm font-medium" style={{ color: t.text }}>Email draft</span>
+        <div className="p-3 border-b border-black/5 flex items-center gap-2" style={{ background: THEME.soft }}>
+          <div className="p-1.5 rounded-full" style={{ background: THEME.from }}><Mail size={12} className="text-white" /></div>
+          <span className="text-sm font-medium" style={{ color: THEME.text }}>Email draft</span>
         </div>
         <div className="p-4 text-sm space-y-3">
           <div className="flex gap-2"><span className="text-[#9B92AA] w-8 text-xs uppercase">To</span><span className="text-[#231A2E] font-medium">{args.to}</span></div>
           <div className="flex gap-2"><span className="text-[#9B92AA] w-8 text-xs uppercase">Sub</span><span className="text-[#3A2E4A]">{args.subject}</span></div>
-          <div className="bg-[#F5F1FA] p-3 rounded-lg text-[#5B5468] text-xs italic border-l-2" style={{ borderColor: t.from }}>{args.body}</div>
+          <div className="bg-[#F5F1FA] p-3 rounded-lg text-[#5B5468] text-xs italic border-l-2" style={{ borderColor: THEME.from }}>{args.body}</div>
         </div>
       </div>
     );
@@ -274,15 +233,11 @@ const RenderToolInvocation = memo(({ toolInvocation, mode }: { toolInvocation: a
 });
 RenderToolInvocation.displayName = "RenderToolInvocation";
 
-// ==========================================================
-// SMALL UTILITY COMPONENTS
-// ==========================================================
-const ThinkingIndicator = ({ mode }: { mode: "personal" | "accountant" }) => {
-  const t = THEME[mode];
+const ThinkingIndicator = () => {
   return (
     <div className="flex items-center gap-3 p-4 ml-2">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: t.soft }}>
-        <Sparkles size={14} style={{ color: t.text }} className="animate-spin-slow" />
+      <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: THEME.soft }}>
+        <Sparkles size={14} style={{ color: THEME.text }} className="animate-spin-slow" />
       </div>
       <div className="flex gap-1 h-4 items-center">
         {[0, 1, 2].map((i) => (
@@ -291,22 +246,22 @@ const ThinkingIndicator = ({ mode }: { mode: "personal" | "accountant" }) => {
             animate={{ height: [4, 14, 4], opacity: [0.4, 1, 0.4] }}
             transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
             className="w-1 rounded-full"
-            style={{ background: t.from }}
+            style={{ background: THEME.from }}
           />
         ))}
       </div>
-      <span className="text-xs font-medium tracking-wide ml-1" style={{ color: t.text }}>thinking…</span>
+      <span className="text-xs font-medium tracking-wide ml-1" style={{ color: THEME.text }}>thinking…</span>
     </div>
   );
 };
-const CallAvatar = ({ isSpeaking, mode }: { isSpeaking: boolean; isListening: boolean; mode: "personal" | "accountant" }) => {
-  const t = THEME[mode];
+
+const CallAvatar = ({ isSpeaking }: { isSpeaking: boolean; isListening: boolean }) => {
   return (
     <motion.div
       animate={{ y: [0, -5, 0] }}
       transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       className="relative w-56 h-56 rounded-full flex flex-col items-center justify-center bg-white shadow-[0_20px_60px_rgba(168,85,247,0.25)] overflow-hidden border-4 border-white"
-      style={{ boxShadow: `0 20px 60px ${t.from}33` }}
+      style={{ boxShadow: `0 20px 60px ${THEME.from}33` }}
     >
       <div className="flex gap-7 mb-2 mt-6">
         {[0, 1].map((i) => (
@@ -315,11 +270,9 @@ const CallAvatar = ({ isSpeaking, mode }: { isSpeaking: boolean; isListening: bo
             initial={{ scaleY: 1 }}
             animate={{ scaleY: [1, 1, 0.1, 1, 1, 1] }}
             transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.9, 0.92, 0.95, 0.98, 1] }}
-            // 🔥 BUG FIXED HERE: Changed h-18 to h-20 and w-14 to w-16
             className="w-16 h-20 rounded-[50%] relative overflow-hidden shadow-inner"
-            style={{ background: `linear-gradient(180deg, ${t.to}, ${t.from})` }}
+            style={{ background: `linear-gradient(180deg, ${THEME.to}, ${THEME.from})` }}
           >
-            {/* Cute eye shine reflection */}
             <div className="absolute top-3 left-3 w-5 h-6 bg-white rounded-full opacity-90 rotate-[-20deg] blur-[0.5px]" />
           </motion.div>
         ))}
@@ -329,19 +282,18 @@ const CallAvatar = ({ isSpeaking, mode }: { isSpeaking: boolean; isListening: bo
           <motion.div
             animate={{ height: [5, 12, 5], width: [12, 16, 12], borderRadius: ["10px", "14px", "10px"] }}
             transition={{ duration: 0.25, repeat: Infinity, ease: "easeInOut" }}
-            style={{ background: t.from }}
+            style={{ background: THEME.from }}
           />
         ) : (
-          <div className="w-4 h-1.5 rounded-b-full" style={{ background: t.to }} />
+          <div className="w-4 h-1.5 rounded-b-full" style={{ background: THEME.to }} />
         )}
       </div>
     </motion.div>
   );
 };
 
-const ImageGenerator = ({ toolInvocation, mode }: { toolInvocation: any; mode: "personal" | "accountant" }) => {
+const ImageGenerator = ({ toolInvocation }: { toolInvocation: any }) => {
   const { args, result } = toolInvocation;
-  const t = THEME[mode];
   const [isExpanded, setIsExpanded] = useState(true);
   const [isLoadingImage, setIsLoadingImage] = useState(true);
 
@@ -349,10 +301,10 @@ const ImageGenerator = ({ toolInvocation, mode }: { toolInvocation: any; mode: "
     return (
       <div className="mt-3 w-full max-w-sm bg-white/80 rounded-xl border border-black/5 p-4 shadow-sm animate-pulse">
         <div className="flex items-center gap-3 mb-3">
-          <div className="p-2 rounded-full" style={{ background: t.soft }}><Sparkles size={18} style={{ color: t.text }} className="animate-spin-slow" /></div>
-          <span className="text-sm font-medium" style={{ color: t.text }}>Amina is creating art…</span>
+          <div className="p-2 rounded-full" style={{ background: THEME.soft }}><Sparkles size={18} style={{ color: THEME.text }} className="animate-spin-slow" /></div>
+          <span className="text-sm font-medium" style={{ color: THEME.text }}>Amina is creating art…</span>
         </div>
-        <div className="h-48 bg-[#F5F1FA] rounded-lg flex items-center justify-center"><Loader2 size={30} style={{ color: t.from }} className="animate-spin" /></div>
+        <div className="h-48 bg-[#F5F1FA] rounded-lg flex items-center justify-center"><Loader2 size={30} style={{ color: THEME.from }} className="animate-spin" /></div>
         <div className="mt-2 text-xs text-[#9B92AA] italic">{args.prompt}</div>
       </div>
     );
@@ -391,7 +343,7 @@ const ImageGenerator = ({ toolInvocation, mode }: { toolInvocation: any; mode: "
 
   if (!isExpanded) {
     return (
-      <button onClick={() => setIsExpanded(true)} className="mt-2 flex items-center gap-2 px-4 py-2 bg-white/80 rounded-full border border-black/5 text-xs shadow-sm hover:bg-white transition-all" style={{ color: t.text }}>
+      <button onClick={() => setIsExpanded(true)} className="mt-2 flex items-center gap-2 px-4 py-2 bg-white/80 rounded-full border border-black/5 text-xs shadow-sm hover:bg-white transition-all" style={{ color: THEME.text }}>
         <ImageIcon size={14} /> View generated image
       </button>
     );
@@ -401,56 +353,21 @@ const ImageGenerator = ({ toolInvocation, mode }: { toolInvocation: any; mode: "
     <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="mt-4 w-full max-w-md bg-white rounded-2xl overflow-hidden border border-black/5 shadow-lg relative">
       <div className="absolute top-0 left-0 w-full p-3 bg-gradient-to-b from-black/30 to-transparent flex justify-between items-start z-10">
         <div className="flex items-center gap-2 px-2 py-1 bg-white/80 backdrop-blur-md rounded-full">
-          <Sparkles size={12} style={{ color: t.text }} /> <span className="text-[10px] font-medium text-[#231A2E] uppercase tracking-wide">AI generated</span>
+          <Sparkles size={12} style={{ color: THEME.text }} /> <span className="text-[10px] font-medium text-[#231A2E] uppercase tracking-wide">AI generated</span>
         </div>
         <button onClick={() => setIsExpanded(false)} className="p-1.5 bg-white/80 hover:bg-red-100 backdrop-blur-md rounded-full text-[#5B5468] hover:text-red-500 transition-all"><X size={14} /></button>
       </div>
       <div className="relative aspect-square w-full bg-[#F5F1FA] flex items-center justify-center overflow-hidden">
-        {isLoadingImage && <div className="absolute inset-0 flex items-center justify-center z-0"><Loader2 size={30} style={{ color: t.from }} className="animate-spin" /></div>}
+        {isLoadingImage && <div className="absolute inset-0 flex items-center justify-center z-0"><Loader2 size={30} style={{ color: THEME.from }} className="animate-spin" /></div>}
         <img src={imageUrl} alt={args.prompt} className={`w-full h-full object-cover transition-opacity duration-500 relative z-10 ${isLoadingImage ? "opacity-0" : "opacity-100"}`} onLoad={() => setIsLoadingImage(false)} onError={() => setIsLoadingImage(false)} />
       </div>
       <div className="p-4 bg-white border-t border-black/5">
         <p className="text-xs text-[#9B92AA] italic mb-3 line-clamp-2">{args.prompt}</p>
-        <button onClick={handleDownload} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-white text-xs font-semibold transition-all" style={{ background: `linear-gradient(135deg, ${t.from}, ${t.to})` }}>
+        <button onClick={handleDownload} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-white text-xs font-semibold transition-all" style={{ background: `linear-gradient(135deg, ${THEME.from}, ${THEME.to})` }}>
           <Download size={14} /> Download high res
         </button>
       </div>
     </motion.div>
-  );
-};
-
-const InvoiceTable = ({ data, mode }: { data: any; mode: "personal" | "accountant" }) => {
-  const t = THEME[mode];
-  if (!data?.rows) return null;
-  return (
-    <div className="mt-4 overflow-hidden rounded-xl border border-black/5 bg-white/90 shadow-sm">
-      <div className="px-4 py-3 border-b border-black/5 flex justify-between items-center" style={{ background: t.soft }}>
-        <div className="flex items-center gap-2" style={{ color: t.text }}><Briefcase size={16} /><span className="font-medium text-sm">Amina CPA report</span></div>
-        <span className="text-xs text-[#9B92AA]">{data.summary.rowCount} items</span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="text-xs text-[#9B92AA] uppercase bg-[#FAF8FC]">
-            <tr><th className="px-4 py-3">Item</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3 text-right">Price</th><th className="px-4 py-3 text-right">Tax</th><th className="px-4 py-3 text-right">Total</th></tr>
-          </thead>
-          <tbody className="divide-y divide-black/5">
-            {data.rows.map((row: any, i: number) => (
-              <tr key={i} className="hover:bg-[#FAF8FC] transition-colors">
-                <td className="px-4 py-3 font-medium text-[#231A2E]">{row.item}</td>
-                <td className="px-4 py-3 text-right text-[#9B92AA]">{row.qty}</td>
-                <td className="px-4 py-3 text-right text-[#5B5468]">{row.price.toFixed(2)}</td>
-                <td className="px-4 py-3 text-right text-red-400 text-xs">{row.tax > 0 ? `+${row.tax.toFixed(2)}` : "-"}</td>
-                <td className="px-4 py-3 text-right font-semibold text-emerald-600">{row.computedTotal.toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="px-4 py-3 border-t border-black/5 flex flex-col gap-1 items-end bg-[#FAF8FC]">
-        <div className="flex justify-between w-40 text-xs text-[#9B92AA]"><span>Total tax</span><span>{data.summary.totalTax.toFixed(2)}</span></div>
-        <div className="flex justify-between w-40 text-lg font-semibold text-[#231A2E]"><span>Grand total</span><span className="text-emerald-600">{data.summary.grandTotal.toFixed(2)} MAD</span></div>
-      </div>
-    </div>
   );
 };
 
@@ -511,17 +428,6 @@ const StopAction = () => {
   );
 };
 
-// ==========================================================
-// MAIN CHAT INTERFACE
-// ==========================================================
-// ==========================================================
-// INPUT BAR — hoisted OUTSIDE ChatInterface on purpose. A
-// component defined inside another component's function body
-// gets recreated on every render, which makes React treat it as
-// a brand-new component type and remount the underlying <input>
-// — that's what was stealing focus after every keystroke. Kept
-// as a top-level component with explicit props instead.
-// ==========================================================
 const InputBar = ({
   centered = false,
   input,
@@ -534,13 +440,12 @@ const InputBar = ({
   startListening,
   isListening,
   isLoading,
-  isAccountantMode,
   themeFrom,
   themeTo,
 }: {
   centered?: boolean;
   input: string;
-  handleInputChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  handleInputChange: (e: ChangeEvent<HTMLInputElement> | ChangeEvent<HTMLTextAreaElement>) => void;
   handleFormSubmit: (e: React.FormEvent) => void;
   selectedImage: string | null;
   setSelectedImage: (v: string | null) => void;
@@ -549,65 +454,77 @@ const InputBar = ({
   startListening: () => void;
   isListening: boolean;
   isLoading: boolean;
-  isAccountantMode: boolean;
   themeFrom: string;
   themeTo: string;
-}) => (
-  <div className={centered ? "w-full mt-8" : "max-w-3xl mx-auto"}>
-    {selectedImage && (
-      <div className="mb-2 relative w-fit mx-auto">
-        <img src={selectedImage} alt="Selected" className="w-20 h-20 object-cover rounded-lg border-2 border-white shadow" />
-        <button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"><X size={12} color="white" /></button>
-      </div>
-    )}
-    <form onSubmit={handleFormSubmit} className="relative flex items-center gap-2 bg-white border border-black/5 p-2 pl-4 rounded-full shadow-lg transition-all">
-      <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
-      <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[#B0A6C0] hover:text-[#5B5468] transition-colors"><Paperclip size={19} /></button>
-      <input
-        className="flex-1 bg-transparent border-none outline-none text-[#231A2E] placeholder:text-[#B0A6C0] text-sm md:text-base py-2"
-        value={input}
-        onChange={handleInputChange}
-        placeholder={isAccountantMode ? "Enter financial data…" : "Ask something…"}
-      />
-      <button type="button" onClick={() => { if (!isListening) startListening(); }} className="p-2 text-[#B0A6C0] hover:text-[#5B5468] transition-colors"><Mic size={19} /></button>
-      <button
-        type="submit"
-        disabled={isLoading}
-        className="w-10 h-10 flex items-center justify-center rounded-full transition-all text-white shrink-0"
-        style={{ background: `linear-gradient(135deg, ${themeFrom}, ${themeTo})` }}
-      >
-        <Send size={16} />
-      </button>
-    </form>
-  </div>
-);
+}) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const autoResize = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  };
+
+  useEffect(() => {
+    autoResize();
+  }, [input]);
+
+  const submitIfNotEmpty = (e: React.FormEvent) => {
+    handleFormSubmit(e);
+    requestAnimationFrame(() => {
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+    });
+  };
+
+  return (
+    <div className={centered ? "w-full mt-8" : "max-w-3xl mx-auto"}>
+      {selectedImage && (
+        <div className="mb-2 relative w-fit mx-auto">
+          <img src={selectedImage} alt="Selected" className="w-20 h-20 object-cover rounded-lg border-2 border-white shadow" />
+          <button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"><X size={12} color="white" /></button>
+        </div>
+      )}
+      <form onSubmit={submitIfNotEmpty} className="relative flex items-end gap-2 bg-white border border-black/5 p-2 pl-4 rounded-3xl shadow-lg transition-all">
+        <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
+        <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[#B0A6C0] hover:text-[#5B5468] transition-colors mb-2"><Paperclip size={19} /></button>
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          className="flex-1 bg-transparent border-none outline-none resize-none text-[#231A2E] placeholder:text-[#B0A6C0] text-sm md:text-base py-2 max-h-40 overflow-y-auto"
+          value={input}
+          onChange={handleInputChange}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submitIfNotEmpty(e);
+            }
+          }}
+          placeholder="Ask something… (Shift+Enter for new line)"
+        />
+        <button type="button" onClick={() => { if (!isListening) startListening(); }} className="p-2 text-[#B0A6C0] hover:text-[#5B5468] transition-colors mb-1"><Mic size={19} /></button>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-10 h-10 flex items-center justify-center rounded-full transition-all text-white shrink-0"
+          style={{ background: `linear-gradient(135deg, ${themeFrom}, ${themeTo})` }}
+        >
+          <Send size={16} />
+        </button>
+      </form>
+    </div>
+  );
+};
 
 // ==========================================================
-// MESSAGE CONTENT — also hoisted OUTSIDE ChatInterface, same
-// reason as InputBar above (avoid remount-on-every-render).
+// MESSAGE CONTENT
 // ==========================================================
 const MessageContent = memo(
-  ({ message, isLast, isLoading, mode }: { message: any; isLast: boolean; isLoading: boolean; mode: "personal" | "accountant" }) => {
+  ({ message, isLast, isLoading, localImage }: { message: any; isLast: boolean; isLoading: boolean; localImage?: string }) => {
     if (!message || !message.content) return null;
-
-    if (isLast && message.role === "assistant") {
-      const hasAttachments = message.experimental_attachments && message.experimental_attachments.length > 0;
-      return (
-        <div className="flex flex-col gap-2">
-          {hasAttachments && <div className="rounded-lg overflow-hidden border border-black/5 my-2"><img src={message.experimental_attachments[0].url} className="w-full max-w-xs h-auto object-cover" /></div>}
-          <TypewriterEffect content={typeof message.content === "string" ? message.content : ""} isLast={isLast} isLoading={isLoading} />
-        </div>
-      );
-    }
 
     const RenderContent = ({ text }: { text?: any }) => {
       if (!text || typeof text !== "string") return null;
-      try {
-        if (text.trim().startsWith("{") && text.includes('"rows":')) {
-          const parsed = JSON.parse(text);
-          if (parsed.rows && parsed.summary) return <InvoiceTable data={parsed} mode={mode} />;
-        }
-      } catch {}
       return (
         <div className="prose prose-sm max-w-none leading-relaxed prose-p:text-[#3A2E4A]">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
@@ -615,40 +532,46 @@ const MessageContent = memo(
       );
     };
 
-    if (Array.isArray(message.content)) {
-      return (
-        <div className="flex flex-col gap-2">
-          {message.content.map((part: any, i: number) => {
-            if (part.type === "image" && part.image) return <div key={i} className="rounded-lg overflow-hidden border border-black/5 my-2"><img src={part.image} className="w-full max-w-xs h-auto" /></div>;
-            if (part.type === "text" && part.text) return <RenderContent key={i} text={part.text} />;
-            return null;
-          })}
-        </div>
-      );
-    }
+    return (
+      <div className="flex flex-col gap-2">
+        {localImage && (
+          <div className="rounded-xl overflow-hidden border border-black/5 mt-1 mb-2 shadow-sm bg-black/5">
+            <img src={localImage} alt="Attached/Edited Result" className="w-full max-w-sm h-auto object-contain" />
+          </div>
+        )}
 
-    const hasAttachments = message.experimental_attachments && message.experimental_attachments.length > 0;
-    if (hasAttachments) {
-      return (
-        <div className="flex flex-col gap-2">
-          <div className="rounded-lg overflow-hidden border border-black/5 my-2"><img src={message.experimental_attachments[0].url} className="w-full max-w-xs h-auto object-cover" /></div>
+        {isLast && message.role === "assistant" ? (
+          <TypewriterEffect content={typeof message.content === "string" ? message.content : ""} isLast={isLast} isLoading={isLoading} />
+        ) : (
           <RenderContent text={message.content} />
-        </div>
-      );
-    }
-
-    return <RenderContent text={message.content} />;
+        )}
+      </div>
+    );
   }
 );
 MessageContent.displayName = "MessageContent";
 
-export default function ChatInterface() {
-  const [mode, setMode] = useState<"personal" | "accountant">("personal");
-  const isAccountantMode = mode === "accountant";
-  const t = THEME[mode];
-  const userName = "Douaa"; // shown in the "Hello ___" greeting
+const EDIT_INTENT_KEYWORDS = [
+  "change", "badal", "badlo", "replace", "remove", "hatao", "hata do",
+  "background", "backdrop", "model", "pose", "put this on", "wear",
+  "edit", "banao", "bana do", "generate", "add", "dress pe", "pehna",
+  "color", "colour", "rang", "different", "alag", "short", "style"
+];
 
-  const [showCalculator, setShowCalculator] = useState(false);
+function looksLikeImageEditRequest(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  if (!t.trim()) return true; 
+  return EDIT_INTENT_KEYWORDS.some((k) => t.includes(k));
+}
+
+// ==========================================================
+// MAIN CHAT INTERFACE
+// ==========================================================
+export default function ChatInterface() {
+  const userName = "Douaa"; 
+
+  const [localImages, setLocalImages] = useState<Record<string, string>>({});
+
   const [isCallActive, setIsCallActive] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -687,8 +610,7 @@ export default function ChatInterface() {
   const isLiveModeRef = useRef(false);
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages, setInput, data } = useChat({
-    api: "https://amina-ai.vercel.app/api/chat",
-    body: { data: { isAccountantMode } },
+    api: "/api/chat",
     maxSteps: 5,
     onFinish: async (message) => {
       isProcessingRef.current = false;
@@ -736,8 +658,6 @@ export default function ChatInterface() {
     const chatId = await ensureChatId();
     if (chatId) {
       saveMessageToDb(chatId, "user", content);
-      // First message of a brand-new chat — ask Gemini for a short title,
-      // then tell the sidebar to refresh so the new name shows up.
       if (wasNewChat) {
         fetch(`/api/chats/${chatId}/auto-rename`, {
           method: "POST",
@@ -748,7 +668,7 @@ export default function ChatInterface() {
           .catch((e) => console.error("Auto-rename failed:", e));
       }
     }
-    await append({ role: "user", content }, { body: { data: { isAccountantMode } } });
+    await append({ role: "user", content });
   }
 
   async function resumeChat(id: string) {
@@ -780,7 +700,7 @@ export default function ChatInterface() {
   useEffect(() => { if (messages.length === 0) executedActionsRef.current.clear(); }, [messages]);
 
   const MAX_STORE_MESSAGES = 30;
-  const storageKey = isAccountantMode ? "amina_memory_accountant" : "amina_memory_bestie";
+  const storageKey = "amina_memory_bestie";
 
   useEffect(() => {
     if (!currentChatId) {
@@ -791,7 +711,7 @@ export default function ChatInterface() {
         setMessages([]);
       }
     }
-  }, [isAccountantMode, currentChatId]);
+  }, [currentChatId]);
 
   useEffect(() => {
     if (messages.length === 0 || currentChatId) return;
@@ -803,9 +723,10 @@ export default function ChatInterface() {
   }, [messages, storageKey, currentChatId]);
 
   const clearChat = () => {
-    if (confirm(`Delete ${isAccountantMode ? "Accountant" : "Personal"} memory?`)) {
+    if (confirm("Delete conversation memory?")) {
       localStorage.removeItem(storageKey);
       setMessages([]);
+      setLocalImages({});
       stopSpeaking();
       setCurrentChatId(null);
       currentChatIdRef.current = null;
@@ -868,7 +789,7 @@ export default function ChatInterface() {
     const signal = ttsController.current.signal;
 
     try {
-      const res = await fetch("https://amina-ai.vercel.app/api/speak", {
+      const res = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: cleanText, voice: voiceGender, lang: langForTTS }),
@@ -1007,7 +928,7 @@ export default function ChatInterface() {
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
-        const scale = Math.min(1024 / img.width, 1024 / img.height, 1);
+        const scale = Math.min(800 / img.width, 800 / img.height, 1);
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -1021,22 +942,105 @@ export default function ChatInterface() {
     if (e.target.files?.[0]) setSelectedImage(await resizeAndToDataUrl(e.target.files[0]));
   };
 
+  function createEnhancedChainPrompt(newUserInstruction: string): string {
+    const lowerUserMsg = (newUserInstruction || "").toLowerCase();
+    const strongPhotographicLock = "A highly detailed, high-resolution realistic photograph, highly detailed and realistic, preserving identity and subject look from the previous realistic edits in this thread, with their casual dress, now modified to include the new change: ";
+    const finalResultStyle = ". The final result must be a realistic photo, matching the style and identity, not a cartoon.";
+    return `${strongPhotographicLock}${lowerUserMsg}${finalResultStyle}`;
+  }
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!input?.trim() && !selectedImage) || isLoading) return;
 
     const userMessage = input;
-    const imageToSend = selectedImage;
+    let imageToSend = selectedImage;
+    const wantsEdit = looksLikeImageEditRequest(userMessage);
+    let isChainEdit = false;
+
+    if (!imageToSend && wantsEdit && messages.length > 0) {
+      const reversedMessages = [...messages].reverse();
+      for (const m of reversedMessages) {
+        if (localImages[m.id]) {
+          imageToSend = localImages[m.id];
+          isChainEdit = true;
+          break;
+        }
+        if (m.experimental_attachments && m.experimental_attachments.length > 0) {
+          imageToSend = m.experimental_attachments[0].url;
+          isChainEdit = true;
+          break;
+        }
+      }
+    }
+
     setInput("");
     setSelectedImage(null);
 
     if (imageToSend) {
       const userMsgId = Date.now().toString();
-      setMessages((prev) => [...prev, {
-        id: userMsgId, role: "user", content: userMessage || "Analyze this image",
-        experimental_attachments: [{ name: "image.jpg", contentType: "image/jpeg", url: imageToSend }],
-      } as any]);
+      
+      if (selectedImage) {
+        setLocalImages((prev) => ({ ...prev, [userMsgId]: imageToSend }));
+        setMessages((prev) => [...prev, {
+          id: userMsgId, role: "user", content: userMessage || "Analyze this image",
+        } as any]);
+      } else {
+        setMessages((prev) => [...prev, {
+          id: userMsgId, role: "user", content: userMessage,
+        } as any]);
+      }
+      
       const assistantMsgId = (Date.now() + 1).toString();
+
+      if (wantsEdit) {
+        setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: "Editing the photo…" } as any]);
+        try {
+          const wasNewChat = !currentChatIdRef.current;
+          const enhancedInstruction = isChainEdit 
+            ? createEnhancedChainPrompt(userMessage) 
+            : userMessage;
+
+          const res = await fetch("/api/edit-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: imageToSend, instruction: enhancedInstruction }),
+          });
+          const resData = await res.json();
+
+          if (resData.success && resData.imageUrl) {
+            setLocalImages((prev) => ({ ...prev, [assistantMsgId]: resData.imageUrl }));
+            setMessages((prev) => prev.map((m) => (m.id === assistantMsgId
+              ? { ...m, content: "Ye raha aapka result, kaisa laga? ✨" }
+              : m)));
+          } else {
+            setMessages((prev) => prev.map((m) => (m.id === assistantMsgId
+              ? { ...m, content: resData.error || "Edit nahi ho paya, dobara try karo." }
+              : m)));
+          }
+
+          const chatId = await ensureChatId();
+          if (chatId) {
+            const firstMessageText = userMessage;
+            saveMessageToDb(chatId, "user", firstMessageText);
+            saveMessageToDb(chatId, "assistant", resData.success ? "Ye raha aapka result, kaisa laga? ✨" : (resData.error || "Edit failed"));
+            if (wasNewChat) {
+              fetch(`/api/chats/${chatId}/auto-rename`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: firstMessageText }),
+              })
+                .then(() => window.dispatchEvent(new Event("chats-updated")))
+                .catch((e) => console.error("Auto-rename failed:", e));
+            }
+          }
+        } catch (err) {
+          console.error("Edit-image error:", err);
+          setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Error editing image." } : m)));
+        }
+        return;
+      }
+
       setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: "Looking at the image…" } as any]);
       try {
         const wasNewChat = !currentChatIdRef.current;
@@ -1099,203 +1103,109 @@ export default function ChatInterface() {
   }, [isCallActive, isListening]);
 
   const isChatEmpty = messages.length === 0;
-  const ModeIcon = t.icon;
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center p-3 md:p-6">
-      <AmbientBackground mode={mode} />
+    <div className="fixed inset-0 flex bg-[#FDFCFE]">
+      <AmbientBackground />
 
-      {/* Floating app card */}
-      <div className="relative z-10 w-full h-full max-w-[1400px] rounded-[28px] overflow-hidden shadow-[0_30px_90px_rgba(124,58,237,0.15)] flex bg-[#FDFCFE] border border-white/60">
-
-        {/* SIDEBAR */}
-        <div className={`transition-all duration-300 ease-in-out shrink-0 h-full overflow-hidden ${isSidebarOpen ? "w-64" : "w-0"}`}>
-          <div className="w-64 h-full">
-            <ChatSidebar
-              currentChatId={currentChatId}
-              onSelectChat={resumeChat}
-              onNewChat={() => { setCurrentChatId(null); currentChatIdRef.current = null; setMessages([]); }}
-            />
-          </div>
+      {/* SIDEBAR */}
+      <div className={`transition-all duration-300 ease-in-out shrink-0 h-full overflow-hidden ${isSidebarOpen ? "w-64" : "w-0"}`}>
+        <div className="w-64 h-full">
+          <ChatSidebar
+            currentChatId={currentChatId}
+            onSelectChat={resumeChat}
+            onNewChat={() => { setCurrentChatId(null); currentChatIdRef.current = null; setMessages([]); setLocalImages({}); }}
+          />
         </div>
+      </div>
 
-        {/* CHAT COLUMN */}
-        <div className="flex-1 flex flex-col relative w-full h-full overflow-hidden">
-          {/* HEADER */}
-          <header className="pt-[max(env(safe-area-inset-top),14px)] pb-3 flex items-center px-5 justify-between bg-white/70 backdrop-blur-xl border-b border-black/5 shrink-0">
-            <div className="flex items-center gap-3">
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 -ml-1 hover:bg-black/5 rounded-lg text-[#5B5468] transition-colors">
-                <Menu size={19} />
-              </button>
+      {/* CHAT COLUMN */}
+      <div className="flex-1 flex flex-col relative w-full h-full overflow-hidden">
+        {/* HEADER */}
+        <header className="pt-[max(env(safe-area-inset-top),14px)] pb-3 flex items-center px-5 justify-between bg-white/70 backdrop-blur-xl border-b border-black/5 shrink-0 z-50">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 -ml-1 hover:bg-black/5 rounded-lg text-[#5B5468] transition-colors">
+              <Menu size={19} />
+            </button>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-black/5 bg-white text-sm font-medium text-[#3A2E4A]">
+              <Heart size={13} style={{ color: THEME.text }} />
+              {THEME.label}
+            </div>
+          </div>
+
+          <div className="flex gap-1.5 items-center">
+            <button onClick={() => setVisionMode("camera")} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Camera"><Video size={16} /></button>
+            <button onClick={() => setVisionMode("screen")} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Screen"><Monitor size={16} /></button>
+            <button onClick={() => setShowGame(true)} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Stress buster"><Gamepad2 size={16} /></button>
+            <button onClick={clearChat} className="p-2 hover:bg-red-50 rounded-full text-[#5B5468] hover:text-red-500 transition-all" title="Clear chat"><Trash2 size={16} /></button>
+            <button onClick={() => setIsCallActive(true)} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Voice call"><Phone size={16} /></button>
+          </div>
+        </header>
+
+        {/* CALL OVERLAY */}
+        <AnimatePresence>
+          {isCallActive && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[100] flex flex-col items-center justify-center" style={{ background: THEME.sky }}>
               <button
-                onClick={() => setMode(isAccountantMode ? "personal" : "accountant")}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-black/5 bg-white text-sm font-medium text-[#3A2E4A] hover:bg-[#FAF8FC] transition-colors"
+                onClick={() => { setIsCallActive(false); stopSpeaking(); if (isLiveModeRef.current) { rtEnd(); setIsLiveMode(false); isLiveModeRef.current = false; } }}
+                className="absolute top-6 right-6 p-3 bg-white/80 rounded-full hover:bg-white shadow-sm z-50"
               >
-                <ModeIcon size={13} style={{ color: t.text }} />
-                {t.label}
-                <ChevronDown size={13} className="text-[#B0A6C0]" />
+                <X size={22} className="text-[#3A2E4A]" />
               </button>
-            </div>
 
-            <div className="flex gap-1.5 items-center">
-              <button onClick={() => setVisionMode("camera")} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Camera"><Video size={16} /></button>
-              <button onClick={() => setVisionMode("screen")} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Screen"><Monitor size={16} /></button>
-              <button onClick={() => setShowGame(true)} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Stress buster"><Gamepad2 size={16} /></button>
-              {isAccountantMode && <button onClick={() => setShowCalculator(!showCalculator)} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all"><Calculator size={16} /></button>}
-              <button onClick={clearChat} className="p-2 hover:bg-red-50 rounded-full text-[#5B5468] hover:text-red-500 transition-all"><Trash2 size={16} /></button>
-              <button onClick={() => setIsCallActive(true)} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all"><Phone size={16} /></button>
-              <div
-                className="w-8 h-8 rounded-full ml-1 flex items-center justify-center text-white text-xs font-semibold"
-                style={{ background: `linear-gradient(135deg, ${t.from}, ${t.to})` }}
-              >
-                {userName.charAt(0)}
-              </div>
-            </div>
-          </header>
-
-          {/* CALCULATOR PANEL */}
-          <AnimatePresence>
-            {isAccountantMode && showCalculator && (
-              <motion.div initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 300, opacity: 0 }} className="absolute right-4 top-20 z-40 bg-white border border-black/5 p-4 rounded-2xl shadow-xl w-64">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-medium text-[#3A2E4A]">Calculator</span>
-                  <button onClick={() => setShowCalculator(false)}><X size={16} className="text-[#B0A6C0] hover:text-[#3A2E4A]" /></button>
-                </div>
-                <div className="h-64 bg-[#FAF8FC] rounded-lg overflow-hidden">
-                  <iframe src="https://www.desmos.com/scientific" width="100%" height="100%" style={{ border: 0 }} />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* CALL OVERLAY */}
-          <AnimatePresence>
-            {isCallActive && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[100] flex flex-col items-center justify-center" style={{ background: t.sky }}>
-                <button
-                  onClick={() => { setIsCallActive(false); stopSpeaking(); if (isLiveModeRef.current) { rtEnd(); setIsLiveMode(false); isLiveModeRef.current = false; } }}
-                  className="absolute top-6 right-6 p-3 bg-white/80 rounded-full hover:bg-white shadow-sm z-50"
-                >
-                  <X size={22} className="text-[#3A2E4A]" />
-                </button>
-
-                <div className="relative cursor-pointer" onClick={handleAvatarClick}>
-                  <CallAvatar isSpeaking={isLiveMode ? rtSpeaking : (isSpeaking || isListening)} isListening={isLiveMode ? (rtStatus === "live" && !rtSpeaking) : isListening} mode={mode} />
-                  <div className="absolute inset-0 flex items-center justify-center z-20">
-                    {!isSpeaking && isListening && (
-                      <div className="p-3 rounded-full border-4 border-white animate-bounce shadow-lg" style={{ background: t.from }}>
-                        <Mic size={22} color="white" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <AnimatePresence>
-                  {showHeadphoneNotice && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-20 bg-white/90 text-[#3A2E4A] px-4 py-2 rounded-full shadow-sm flex items-center gap-2 text-sm backdrop-blur-md z-[110]">
-                      <Headphones size={16} style={{ color: t.text }} /> Use headphones for the best experience
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <h2 className="mt-10 text-2xl font-semibold text-[#231A2E]">{voiceGender === "female" ? "Amina" : "Mohammad"}</h2>
-                <p className="text-base mt-2 font-medium" style={{ color: t.text }}>
-                  {isLiveMode
-                    ? rtStatus === "live" ? (rtSpeaking ? "Amina speaking…" : "Listening (live)") : (rtStatus === "connecting" ? "Connecting…" : rtStatus)
-                    : (statusText || "Tap avatar to start")}
-                </p>
-
-                <div className="absolute bottom-12 flex flex-col items-center gap-3">
-                  <button
-                    onClick={toggleLiveMode}
-                    className={`px-8 py-3 rounded-full font-medium transition-all shadow-lg ${isLiveMode ? "bg-red-500 text-white" : "text-white"}`}
-                    style={!isLiveMode ? { background: `linear-gradient(135deg, ${t.from}, ${t.to})` } : {}}
-                  >
-                    {rtStatus === "connecting" ? "Connecting…" : isLiveMode ? "End live call" : "Start live mode"}
-                  </button>
-                  {isLiveMode && rtStatus === "error" && <p className="text-red-500 text-xs max-w-xs text-center">{rtError} — tap avatar for normal mode</p>}
-                  <button onClick={() => setVoiceGender((v) => (v === "female" ? "male" : "female"))} disabled={isLiveMode} className="px-6 py-3 rounded-full bg-white/80 shadow-sm hover:bg-white transition-all disabled:opacity-40 disabled:cursor-not-allowed text-sm text-[#3A2E4A]">
-                    Switch voice ({voiceGender})
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <AnimatePresence>{visionMode && <VisionManager mode={visionMode} onClose={() => setVisionMode(null)} onAnalysisComplete={handleVisionData} />}</AnimatePresence>
-          <AnimatePresence>{showGame && <StressBuster onClose={() => setShowGame(false)} />}</AnimatePresence>
-
-          {/* MESSAGES */}
-          <main className={`flex-1 overflow-y-auto px-4 md:px-10 lg:px-24 relative z-10 w-full h-full flex flex-col ${isChatEmpty ? "justify-center items-center pb-16" : "pt-6 pb-28 scroll-smooth"}`}>
-            {isChatEmpty ? (
-              <>
-                <WelcomeScreen mode={mode} name={userName} onPick={(p) => setInput(p)} />
-                <InputBar
-                  centered
-                  input={input}
-                  handleInputChange={handleInputChange}
-                  handleFormSubmit={handleFormSubmit}
-                  selectedImage={selectedImage}
-                  setSelectedImage={setSelectedImage}
-                  fileInputRef={fileInputRef}
-                  handleFileSelect={handleFileSelect}
-                  startListening={startListening}
-                  isListening={isListening}
-                  isLoading={isLoading}
-                  isAccountantMode={isAccountantMode}
-                  themeFrom={t.from}
-                  themeTo={t.to}
-                />
-              </>
-            ) : (
-              <div className="max-w-3xl mx-auto w-full flex flex-col">
-                {messages.map((m: any, i: number) => {
-                  if (typeof m.content === "string" && m.content.startsWith("[VISION DETECTED]")) return null;
-                  const hasContent = (m.content && typeof m.content === "string" && m.content.trim().length > 0) || (Array.isArray(m.content) && m.content.length > 0);
-                  const hasTools = m.toolInvocations && m.toolInvocations.length > 0;
-                  if (!hasContent && !hasTools) return null;
-
-                  const isLastMessage = i === messages.length - 1;
-
-                  return (
-                    <div key={m.id} className="mb-6 w-full">
-                      {m.role === "assistant" ? (
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 mt-1 border-2 border-white shadow-sm">
-                            <img src="/Amina_logo.png" className="w-full h-full object-cover" />
-                          </div>
-                          <div className="flex flex-col gap-1 max-w-2xl w-full">
-                            {hasContent && (
-                              <div className="bg-white text-[#3A2E4A] px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm border border-black/5 mb-1">
-                                <MessageContent message={m} isLast={isLastMessage} isLoading={isLoading} mode={mode} />
-                              </div>
-                            )}
-                            {m.toolInvocations?.map((tool: any) => <RenderToolInvocation key={tool.toolCallId} toolInvocation={tool} mode={mode} />)}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start gap-3 justify-end">
-                          <div
-                            className="text-white px-5 py-3 rounded-2xl rounded-tr-sm max-w-md break-words shadow-md font-medium"
-                            style={{ background: `linear-gradient(135deg, ${t.from}, ${t.to})` }}
-                          >
-                            <MessageContent message={m} isLast={isLastMessage} isLoading={isLoading} mode={mode} />
-                          </div>
-                        </div>
-                      )}
+              <div className="relative cursor-pointer" onClick={handleAvatarClick}>
+                <CallAvatar isSpeaking={isLiveMode ? rtSpeaking : (isSpeaking || isListening)} isListening={isLiveMode ? (rtStatus === "live" && !rtSpeaking) : isListening} />
+                <div className="absolute inset-0 flex items-center justify-center z-20">
+                  {!isSpeaking && isListening && (
+                    <div className="p-3 rounded-full border-4 border-white animate-bounce shadow-lg" style={{ background: THEME.from }}>
+                      <Mic size={22} color="white" />
                     </div>
-                  );
-                })}
-                {isLoading && <ThinkingIndicator mode={mode} />}
-                <div ref={messagesEndRef} />
+                  )}
+                </div>
               </div>
-            )}
-          </main>
 
-          {/* FOOTER INPUT (only once chat has messages) */}
-          {!isChatEmpty && (
-            <footer className="absolute bottom-0 w-full p-4 pb-6 bg-gradient-to-t from-[#FDFCFE] via-[#FDFCFE]/90 to-transparent z-50">
+              <AnimatePresence>
+                {showHeadphoneNotice && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-20 bg-white/90 text-[#3A2E4A] px-4 py-2 rounded-full shadow-sm flex items-center gap-2 text-sm backdrop-blur-md z-[110]">
+                    <Headphones size={16} style={{ color: THEME.text }} /> Use headphones for the best experience
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <h2 className="mt-10 text-2xl font-semibold text-[#231A2E]">{voiceGender === "female" ? "Amina" : "Mohammad"}</h2>
+              <p className="text-base mt-2 font-medium" style={{ color: THEME.text }}>
+                {isLiveMode
+                  ? rtStatus === "live" ? (rtSpeaking ? "Amina speaking…" : "Listening (live)") : (rtStatus === "connecting" ? "Connecting…" : rtStatus)
+                  : (statusText || "Tap avatar to start")}
+              </p>
+
+              <div className="absolute bottom-12 flex flex-col items-center gap-3">
+                <button
+                  onClick={toggleLiveMode}
+                  className={`px-8 py-3 rounded-full font-medium transition-all shadow-lg ${isLiveMode ? "bg-red-500 text-white" : "text-white"}`}
+                  style={!isLiveMode ? { background: `linear-gradient(135deg, ${THEME.from}, ${THEME.to})` } : {}}
+                >
+                  {rtStatus === "connecting" ? "Connecting…" : isLiveMode ? "End live call" : "Start live mode"}
+                </button>
+                {isLiveMode && rtStatus === "error" && <p className="text-red-500 text-xs max-w-xs text-center">{rtError} — tap avatar for normal mode</p>}
+                <button onClick={() => setVoiceGender((v) => (v === "female" ? "male" : "female"))} disabled={isLiveMode} className="px-6 py-3 rounded-full bg-white/80 shadow-sm hover:bg-white transition-all disabled:opacity-40 disabled:cursor-not-allowed text-sm text-[#3A2E4A]">
+                  Switch voice ({voiceGender})
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>{visionMode && <VisionManager mode={visionMode} onClose={() => setVisionMode(null)} onAnalysisComplete={handleVisionData} />}</AnimatePresence>
+        <AnimatePresence>{showGame && <StressBuster onClose={() => setShowGame(false)} />}</AnimatePresence>
+
+        {/* MESSAGES */}
+        <main className={`flex-1 overflow-y-auto px-4 md:px-10 lg:px-24 relative z-10 w-full h-full flex flex-col ${isChatEmpty ? "justify-center items-center pb-16" : "pt-6 pb-28 scroll-smooth"}`}>
+          {isChatEmpty ? (
+            <>
+              <WelcomeScreen name={userName} onPick={(p) => setInput(p)} />
               <InputBar
+                centered
                 input={input}
                 handleInputChange={handleInputChange}
                 handleFormSubmit={handleFormSubmit}
@@ -1306,13 +1216,84 @@ export default function ChatInterface() {
                 startListening={startListening}
                 isListening={isListening}
                 isLoading={isLoading}
-                isAccountantMode={isAccountantMode}
-                themeFrom={t.from}
-                themeTo={t.to}
+                themeFrom={THEME.from}
+                themeTo={THEME.to}
               />
-            </footer>
+            </>
+          ) : (
+            <div className="max-w-3xl mx-auto w-full flex flex-col">
+              {messages.map((m: any, i: number) => {
+                if (typeof m.content === "string" && m.content.startsWith("[VISION DETECTED]")) return null;
+                const hasContent = (m.content && typeof m.content === "string" && m.content.trim().length > 0) || (Array.isArray(m.content) && m.content.length > 0);
+                const hasTools = m.toolInvocations && m.toolInvocations.length > 0;
+                if (!hasContent && !hasTools) return null;
+
+                const isLastMessage = i === messages.length - 1;
+
+                return (
+                  <div key={m.id} className="mb-6 w-full">
+                    {m.role === "assistant" ? (
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 mt-1 border-2 border-white shadow-sm">
+                          <img src="/Amina_logo.png" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex flex-col gap-1 max-w-2xl w-full">
+                          {hasContent && (
+                            <div className="bg-white text-[#3A2E4A] px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm border border-black/5 mb-1">
+                              <MessageContent 
+                                message={m} 
+                                isLast={isLastMessage} 
+                                isLoading={isLoading} 
+                                localImage={localImages[m.id]} 
+                              />
+                            </div>
+                          )}
+                          {m.toolInvocations?.map((tool: any) => <RenderToolInvocation key={tool.toolCallId} toolInvocation={tool} />)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-3 justify-end">
+                        <div
+                          className="text-white px-5 py-3 rounded-2xl rounded-tr-sm max-w-2xl break-words whitespace-pre-wrap shadow-md font-medium"
+                          style={{ background: `linear-gradient(135deg, ${THEME.from}, ${THEME.to})` }}
+                        >
+                          <MessageContent 
+                            message={m} 
+                            isLast={isLastMessage} 
+                            isLoading={isLoading} 
+                            localImage={localImages[m.id]} 
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {isLoading && <ThinkingIndicator />}
+              <div ref={messagesEndRef} />
+            </div>
           )}
-        </div>
+        </main>
+
+        {/* FOOTER INPUT */}
+        {!isChatEmpty && (
+          <footer className="absolute bottom-0 w-full p-4 pb-6 bg-gradient-to-t from-[#FDFCFE] via-[#FDFCFE]/90 to-transparent z-40">
+            <InputBar
+              input={input}
+              handleInputChange={handleInputChange}
+              handleFormSubmit={handleFormSubmit}
+              selectedImage={selectedImage}
+              setSelectedImage={setSelectedImage}
+              fileInputRef={fileInputRef}
+              handleFileSelect={handleFileSelect}
+              startListening={startListening}
+              isListening={isListening}
+              isLoading={isLoading}
+              themeFrom={THEME.from}
+              themeTo={THEME.to}
+            />
+          </footer>
+        )}
       </div>
     </div>
   );
