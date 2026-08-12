@@ -4,8 +4,8 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY });
 
-// Fast + good quality for edits. Switch to "gemini-3-pro-image" if you want higher quality (slower).
-const IMAGE_MODEL = "gemini-3.1-flash-image";
+// 🔥 THE UPGRADE: Changed from "flash" (basic) to "pro" (premium photorealistic)
+const IMAGE_MODEL = "gemini-3-pro-image";
 
 export interface EditImageResult {
   success: boolean;
@@ -35,7 +35,7 @@ export async function editImageWithGemini(
           ],
         },
       ],
-      // ✅ THE REAL FIX — this was missing, so the model never returned image data
+      // ✅ Tells the model we specifically want an IMAGE back
       config: {
         responseModalities: ["TEXT", "IMAGE"],
       },

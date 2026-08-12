@@ -1,66 +1,76 @@
-export async function generateImageWithGemini(prompt: string): Promise<any> {
-  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
+// app/lib/imageGen.ts
 
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY });
+
+// Same model family that already works for editing in editImageWithGemini.ts —
+// using this instead of the Imagen "predict" REST endpoint, which needs
+// Vertex AI billing access that a plain Gemini API key usually doesn't have.
+const IMAGE_MODEL = "gemini-3.1-flash-image";
+
+export interface GenerateImageResult {
+  success: boolean;
+  imageUrl?: string;
+  error?: string;
+  source?: "gemini" | "pollinations"; // 🆕 so you can see in logs/UI which one actually ran
+}
+
+export async function generateImageWithGemini(prompt: string): Promise<GenerateImageResult> {
   // ---------------------------------------------------------
-  // 1️⃣ OPTION A: GOOGLE IMAGEN 4
-  //    (imagen-3.0-generate-001 is no longer in the available
-  //    models list — swapped to imagen-4.0-generate-001)
+  // 1️⃣ PRIMARY: Gemini native image generation
+  //    (same working call shape as editImageWithGemini.ts —
+  //    just no inlineData part since there's no source photo)
   // ---------------------------------------------------------
   try {
-    if (apiKey) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+    const response = await ai.models.generateContent({
+      model: IMAGE_MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      ],
+      config: {
+        responseModalities: ["TEXT", "IMAGE"],
+      },
+    });
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instances: [{ prompt: prompt }],
-          parameters: { sampleCount: 1, aspectRatio: "1:1" },
-        }),
-      });
+    const parts = response.candidates?.[0]?.content?.parts ?? [];
+    const imagePart = parts.find((p) => p.inlineData?.data);
 
-      if (response.ok) {
-        const data = await response.json();
-        const base64Image = data.predictions?.[0]?.bytesBase64Encoded;
-        
-        if (base64Image) {
-          console.log("✅ Generated with Google Imagen 4");
-          // 👇 IMPORTANT: Object Format Return Karo
-          return {
-            success: true,
-            imageUrl: `data:image/png;base64,${base64Image}`
-          };
-        }
-      } else {
-        console.warn("⚠️ Imagen 4 request failed:", response.status, await response.text().catch(() => ""));
-      }
+    if (imagePart?.inlineData?.data) {
+      const outMime = imagePart.inlineData.mimeType || "image/png";
+      console.log("✅ Generated with Gemini native image model");
+      return {
+        success: true,
+        imageUrl: `data:${outMime};base64,${imagePart.inlineData.data}`,
+        source: "gemini",
+      };
     }
-  } catch (error) {
-    console.warn("⚠️ Google Image Gen failed, switching to backup...", error);
+
+    const textPart = parts.find((p) => p.text)?.text;
+    console.warn("⚠️ Gemini image gen returned no image. Model said:", textPart);
+  } catch (error: any) {
+    console.warn("⚠️ Gemini image gen failed, switching to backup...", error?.message || error);
   }
 
   // ---------------------------------------------------------
-  // 2️⃣ OPTION B: POLLINATIONS (Backup)
+  // 2️⃣ BACKUP ONLY: Pollinations
+  //    (should rarely fire now — only when Gemini genuinely errors)
   // ---------------------------------------------------------
   try {
     const safePrompt = encodeURIComponent(prompt);
     const randomSeed = Math.floor(Math.random() * 1000000);
-    
-    // Nologo aur Flux model best hain
     const imageUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=1024&height=1024&seed=${randomSeed}&nologo=true&model=flux`;
-    
-    // Check link alive
+
     const res = await fetch(imageUrl);
     if (res.ok) {
-        console.log("✅ Generated with Pollinations Backup");
-        // 👇 IMPORTANT: Yahan bhi Object Format Return Karo
-        return {
-            success: true,
-            imageUrl: imageUrl
-        };
+      console.log("⚠️ Fell back to Pollinations backup");
+      return { success: true, imageUrl, source: "pollinations" };
     }
   } catch (e) {
-    console.error("❌ Both Google and Backup failed");
+    console.error("❌ Both Gemini and Pollinations backup failed");
   }
 
   return { success: false, error: "Generation failed" };

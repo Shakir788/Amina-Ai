@@ -7,7 +7,7 @@ import {
   Mail, Calendar, CheckCircle, Square, Download,
   Image as ImageIcon, Loader2, Gamepad2,
   Clock, CloudSun, Wind, Droplets, Search, Headphones,
-  Video, Monitor, Menu, ShoppingBag
+  Video, Monitor, Menu, ShoppingBag, Wand2
 } from "lucide-react";
 import React, { useRef, useEffect, useState, ChangeEvent, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -191,7 +191,7 @@ const RenderToolInvocation = memo(({ toolInvocation }: { toolInvocation: any }) 
   }
 
   if (toolName === "showMap") {
-    const mapSrc = `https://www.google.com/maps?q=$${encodeURIComponent(args.location)}&output=embed`;
+    const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(args.location)}&output=embed`;
     return (
       <div className="mt-3 w-full max-w-md bg-white/80 rounded-xl overflow-hidden border border-black/5 shadow-sm">
         <div className="p-2 font-medium flex gap-2 text-sm" style={{ background: THEME.soft, color: THEME.text }}><MapPin size={14} /> Location</div>
@@ -255,7 +255,7 @@ const ThinkingIndicator = () => {
   );
 };
 
-const CallAvatar = ({ isSpeaking }: { isSpeaking: boolean; isListening: boolean }) => {
+const CallAvatar = ({ isSpeaking, isListening }: { isSpeaking: boolean; isListening: boolean }) => {
   return (
     <motion.div
       animate={{ y: [0, -5, 0] }}
@@ -437,11 +437,12 @@ const InputBar = ({
   setSelectedImage,
   fileInputRef,
   handleFileSelect,
-  startListening,
+  onMicClick,
   isListening,
   isLoading,
   themeFrom,
   themeTo,
+  placeholder,
 }: {
   centered?: boolean;
   input: string;
@@ -451,11 +452,12 @@ const InputBar = ({
   setSelectedImage: (v: string | null) => void;
   fileInputRef: React.RefObject<HTMLInputElement>;
   handleFileSelect: (e: ChangeEvent<HTMLInputElement>) => void;
-  startListening: () => void;
+  onMicClick: () => void;
   isListening: boolean;
   isLoading: boolean;
   themeFrom: string;
   themeTo: string;
+  placeholder?: string;
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -500,9 +502,16 @@ const InputBar = ({
               submitIfNotEmpty(e);
             }
           }}
-          placeholder="Ask something… (Shift+Enter for new line)"
+          placeholder={placeholder || "Ask something… (Shift+Enter for new line)"}
         />
-        <button type="button" onClick={() => { if (!isListening) startListening(); }} className="p-2 text-[#B0A6C0] hover:text-[#5B5468] transition-colors mb-1"><Mic size={19} /></button>
+        <button
+          type="button"
+          onClick={onMicClick}
+          className={`p-2 mb-1 transition-colors ${isListening ? "text-red-500 animate-pulse" : "text-[#B0A6C0] hover:text-[#5B5468]"}`}
+          title={isListening ? "Listening…" : "Tap to speak"}
+        >
+          <Mic size={19} />
+        </button>
         <button
           type="submit"
           disabled={isLoading}
@@ -517,6 +526,34 @@ const InputBar = ({
 };
 
 // ==========================================================
+// CUTE IMAGE LOADING ANIMATION ✨
+// ==========================================================
+const ImageLoadingAnimation = ({ text }: { text: string }) => {
+  return (
+    <div className="w-full max-w-sm mt-1 mb-2">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="p-2 rounded-full shadow-sm" style={{ background: THEME.soft }}>
+          <Sparkles size={16} style={{ color: THEME.text }} className="animate-spin-slow" />
+        </div>
+        <span className="text-sm font-medium animate-pulse" style={{ color: THEME.text }}>{text}</span>
+      </div>
+      <div className="relative aspect-square w-full rounded-2xl overflow-hidden border border-black/5 bg-[#F5F1FA] shadow-sm flex items-center justify-center">
+        <motion.div
+          className="absolute inset-0 opacity-50"
+          style={{
+            background: `linear-gradient(90deg, transparent, ${THEME.soft}, transparent)`,
+            backgroundSize: "200% 100%"
+          }}
+          animate={{ backgroundPosition: ["200% 0", "-200% 0"] }}
+          transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+        />
+        <Loader2 size={32} style={{ color: THEME.from }} className="animate-spin relative z-10" />
+      </div>
+    </div>
+  );
+};
+
+// ==========================================================
 // MESSAGE CONTENT
 // ==========================================================
 const MessageContent = memo(
@@ -525,6 +562,15 @@ const MessageContent = memo(
 
     const RenderContent = ({ text }: { text?: any }) => {
       if (!text || typeof text !== "string") return null;
+
+      // 🔥 THE MAGIC: Show cute animation instead of boring text!
+      if (text === "Editing the photo…") {
+        return <ImageLoadingAnimation text="Amina is weaving her magic... 🎨✨" />;
+      }
+      if (text === "Looking at the image…") {
+        return <ImageLoadingAnimation text="Amina is analyzing the details... 👁️✨" />;
+      }
+
       return (
         <div className="prose prose-sm max-w-none leading-relaxed prose-p:text-[#3A2E4A]">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
@@ -532,11 +578,38 @@ const MessageContent = memo(
       );
     };
 
+    const handleDownloadLocalImage = async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!localImage) return;
+      try {
+        const res = await fetch(localImage);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `amina_${Date.now()}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch {
+        window.open(localImage, "_blank");
+      }
+    };
+
     return (
       <div className="flex flex-col gap-2">
         {localImage && (
-          <div className="rounded-xl overflow-hidden border border-black/5 mt-1 mb-2 shadow-sm bg-black/5">
+          <div className="rounded-xl overflow-hidden border border-black/5 mt-1 mb-2 shadow-sm bg-black/5 relative group">
             <img src={localImage} alt="Attached/Edited Result" className="w-full max-w-sm h-auto object-contain" />
+            <button
+              onClick={handleDownloadLocalImage}
+              className="absolute bottom-2 right-2 p-2 bg-white/90 hover:bg-white rounded-full shadow-sm opacity-90 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+              title="Download image"
+            >
+              <Download size={14} className="text-[#5B5468]" />
+            </button>
           </div>
         )}
 
@@ -560,7 +633,7 @@ const EDIT_INTENT_KEYWORDS = [
 
 function looksLikeImageEditRequest(text: string): boolean {
   const t = (text || "").toLowerCase();
-  if (!t.trim()) return true; 
+  if (!t.trim()) return true;
   return EDIT_INTENT_KEYWORDS.some((k) => t.includes(k));
 }
 
@@ -568,7 +641,7 @@ function looksLikeImageEditRequest(text: string): boolean {
 // MAIN CHAT INTERFACE
 // ==========================================================
 export default function ChatInterface() {
-  const userName = "Douaa"; 
+  const userName = "Douaa";
 
   const [localImages, setLocalImages] = useState<Record<string, string>>({});
 
@@ -584,6 +657,13 @@ export default function ChatInterface() {
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // 🖼️ NEW: dedicated Image Studio mode — keeps image editing separate from normal chat
+  const [activeMode, setActiveMode] = useState<"chat" | "image">("chat");
+
+  // 🎤 NEW: dictation state for mic-in-textbox (works outside of voice-call mode)
+  const [isDictating, setIsDictating] = useState(false);
+  const dictationRecRef = useRef<any>(null);
 
   const currentChatIdRef = useRef<string | null>(null);
   useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
@@ -630,6 +710,8 @@ export default function ChatInterface() {
     },
   });
 
+  const storageKey = "amina_memory_bestie";
+
   async function ensureChatId(): Promise<string | null> {
     if (currentChatIdRef.current) return currentChatIdRef.current;
     try {
@@ -645,9 +727,15 @@ export default function ChatInterface() {
     }
   }
 
-  async function saveMessageToDb(chatId: string, role: "user" | "assistant", content: string) {
+  // 🔧 CHANGED: now accepts an optional imageUrl so generated/edited images
+  // get persisted to the DB and survive switching chats.
+  async function saveMessageToDb(chatId: string, role: "user" | "assistant", content: string, imageUrl?: string) {
     try {
-      await fetch(`/api/chats/${chatId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, content }) });
+      await fetch(`/api/chats/${chatId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, content, imageUrl }),
+      });
     } catch (e) {
       console.error("Failed to save message:", e);
     }
@@ -671,6 +759,8 @@ export default function ChatInterface() {
     await append({ role: "user", content });
   }
 
+  // 🔧 CHANGED: now also rebuilds localImages from the saved imageUrl field
+  // so edited/generated photos don't disappear when you leave and come back.
   async function resumeChat(id: string) {
     try {
       const res = await fetch(`/api/chats/${id}`);
@@ -679,6 +769,12 @@ export default function ChatInterface() {
       currentChatIdRef.current = id;
       setCurrentChatId(id);
       setMessages((dataRes.messages || []).map((m: any) => ({ id: m.id, role: m.role, content: m.content })));
+
+      const imgs: Record<string, string> = {};
+      (dataRes.messages || []).forEach((m: any) => {
+        if (m.imageUrl) imgs[m.id] = m.imageUrl;
+      });
+      setLocalImages(imgs);
     } catch (e) {
       console.error("Failed to resume chat:", e);
     }
@@ -700,13 +796,22 @@ export default function ChatInterface() {
   useEffect(() => { if (messages.length === 0) executedActionsRef.current.clear(); }, [messages]);
 
   const MAX_STORE_MESSAGES = 30;
-  const storageKey = "amina_memory_bestie";
 
+  // 🔥 Fix: LocalStorage se tabhi load karo jab explicit chat reset na hua ho
   useEffect(() => {
     if (!currentChatId) {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
-        try { const parsed = JSON.parse(saved); if (Array.isArray(parsed)) setMessages(parsed.slice(-MAX_STORE_MESSAGES)); } catch {}
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMessages(parsed.slice(-MAX_STORE_MESSAGES));
+          } else {
+            setMessages([]);
+          }
+        } catch {
+          setMessages([]);
+        }
       } else {
         setMessages([]);
       }
@@ -724,7 +829,7 @@ export default function ChatInterface() {
 
   const clearChat = () => {
     if (confirm("Delete conversation memory?")) {
-      localStorage.removeItem(storageKey);
+      localStorage.removeItem(storageKey); // 🔥 Remove local cache
       setMessages([]);
       setLocalImages({});
       stopSpeaking();
@@ -829,6 +934,7 @@ export default function ChatInterface() {
     return () => clearTimeout(timeoutId);
   }, [messages, isLoading, isCallActive]);
 
+  // Used only inside the voice-call overlay (continuous, hands-free loop)
   const startListening = () => {
     if (isLiveModeRef.current) return;
     if (!isCallActive) return;
@@ -885,6 +991,35 @@ export default function ChatInterface() {
     try { recognition.start(); } catch {}
   };
 
+  // 🎤 NEW: dictation for the normal typing box — fills `input`, does NOT auto-send.
+  // Works independently of the call overlay, so mic works wherever you type.
+  const startDictation = () => {
+    if (isCallActive) { startListening(); return; } // inside call overlay, keep old behavior
+    if (isDictating) {
+      try { dictationRecRef.current?.stop(); } catch {}
+      return;
+    }
+
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { alert("Voice typing isn't supported in this browser."); return; }
+
+    const rec = new SR();
+    dictationRecRef.current = rec;
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+
+    rec.onstart = () => setIsDictating(true);
+    rec.onresult = (e: any) => {
+      const text = e.results?.[0]?.[0]?.transcript;
+      if (text) setInput((prev: string) => (prev ? `${prev} ${text}` : text));
+    };
+    rec.onerror = () => setIsDictating(false);
+    rec.onend = () => setIsDictating(false);
+
+    try { rec.start(); } catch { setIsDictating(false); }
+  };
+
   const handleAvatarClick = () => {
     if (isLiveModeRef.current) return;
     if (isSpeaking) {
@@ -920,6 +1055,7 @@ export default function ChatInterface() {
     else if (!isSpeaking && !isCallActive) setFaceExpression("idle");
   }, [isLoading, isSpeaking, isCallActive]);
 
+  // 🔧 CHANGED: bigger max size + higher jpeg quality so edited photos don't come out soft/blurry
   async function resizeAndToDataUrl(file: File): Promise<string> {
     return new Promise((resolve) => {
       const img = new Image();
@@ -928,11 +1064,12 @@ export default function ChatInterface() {
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
-        const scale = Math.min(800 / img.width, 800 / img.height, 1);
+        const MAX_DIM = 1280; // was 800
+        const scale = Math.min(MAX_DIM / img.width, MAX_DIM / img.height, 1);
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.7));
+        resolve(canvas.toDataURL("image/jpeg", 0.92)); // was 0.7
       };
       reader.readAsDataURL(file);
     });
@@ -955,7 +1092,11 @@ export default function ChatInterface() {
 
     const userMessage = input;
     let imageToSend = selectedImage;
-    const wantsEdit = looksLikeImageEditRequest(userMessage);
+
+    // 🖼️ CHANGED: in Image Studio mode we always treat this as an edit intent
+    // (skip the keyword-guessing heuristic entirely) — separates image editing
+    // from normal chat completely, like the old accountant mode used to be.
+    const wantsEdit = activeMode === "image" ? true : looksLikeImageEditRequest(userMessage);
     let isChainEdit = false;
 
     if (!imageToSend && wantsEdit && messages.length > 0) {
@@ -979,9 +1120,9 @@ export default function ChatInterface() {
 
     if (imageToSend) {
       const userMsgId = Date.now().toString();
-      
+
       if (selectedImage) {
-        setLocalImages((prev) => ({ ...prev, [userMsgId]: imageToSend }));
+        setLocalImages((prev) => ({ ...prev, [userMsgId]: imageToSend as string }));
         setMessages((prev) => [...prev, {
           id: userMsgId, role: "user", content: userMessage || "Analyze this image",
         } as any]);
@@ -990,15 +1131,15 @@ export default function ChatInterface() {
           id: userMsgId, role: "user", content: userMessage,
         } as any]);
       }
-      
+
       const assistantMsgId = (Date.now() + 1).toString();
 
       if (wantsEdit) {
         setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: "Editing the photo…" } as any]);
         try {
           const wasNewChat = !currentChatIdRef.current;
-          const enhancedInstruction = isChainEdit 
-            ? createEnhancedChainPrompt(userMessage) 
+          const enhancedInstruction = isChainEdit
+            ? createEnhancedChainPrompt(userMessage)
             : userMessage;
 
           const res = await fetch("/api/edit-image", {
@@ -1022,8 +1163,13 @@ export default function ChatInterface() {
           const chatId = await ensureChatId();
           if (chatId) {
             const firstMessageText = userMessage;
-            saveMessageToDb(chatId, "user", firstMessageText);
-            saveMessageToDb(chatId, "assistant", resData.success ? "Ye raha aapka result, kaisa laga? ✨" : (resData.error || "Edit failed"));
+            saveMessageToDb(chatId, "user", firstMessageText, selectedImage ? (imageToSend as string) : undefined);
+            saveMessageToDb(
+              chatId,
+              "assistant",
+              resData.success ? "Ye raha aapka result, kaisa laga? ✨" : (resData.error || "Edit failed"),
+              resData.success ? resData.imageUrl : undefined
+            );
             if (wasNewChat) {
               fetch(`/api/chats/${chatId}/auto-rename`, {
                 method: "POST",
@@ -1053,7 +1199,7 @@ export default function ChatInterface() {
         const chatId = await ensureChatId();
         if (chatId) {
           const firstMessageText = userMessage || "Analyze this image";
-          saveMessageToDb(chatId, "user", firstMessageText);
+          saveMessageToDb(chatId, "user", firstMessageText, selectedImage ? (imageToSend as string) : undefined);
           if (resData.text) saveMessageToDb(chatId, "assistant", resData.text);
           if (wasNewChat) {
             fetch(`/api/chats/${chatId}/auto-rename`, {
@@ -1103,6 +1249,7 @@ export default function ChatInterface() {
   }, [isCallActive, isListening]);
 
   const isChatEmpty = messages.length === 0;
+  const isImageMode = activeMode === "image";
 
   return (
     <div className="fixed inset-0 flex bg-[#FDFCFE]">
@@ -1114,7 +1261,13 @@ export default function ChatInterface() {
           <ChatSidebar
             currentChatId={currentChatId}
             onSelectChat={resumeChat}
-            onNewChat={() => { setCurrentChatId(null); currentChatIdRef.current = null; setMessages([]); setLocalImages({}); }}
+            onNewChat={() => { 
+              setCurrentChatId(null); 
+              currentChatIdRef.current = null; 
+              setMessages([]); 
+              setLocalImages({}); 
+              localStorage.removeItem(storageKey); // 🔥 Fix 1
+            }}
           />
         </div>
       </div>
@@ -1131,6 +1284,42 @@ export default function ChatInterface() {
               <Heart size={13} style={{ color: THEME.text }} />
               {THEME.label}
             </div>
+
+            {/* 🖼️ NEW: chat / image studio toggle (With Fix 2: Screen Clearing) */}
+            <div className="flex items-center bg-white rounded-full border border-black/5 p-0.5 ml-1">
+              <button
+                onClick={() => {
+                  if (activeMode !== "chat") {
+                    setActiveMode("chat");
+                    setCurrentChatId(null);
+                    currentChatIdRef.current = null;
+                    setMessages([]);
+                    setLocalImages({});
+                    localStorage.removeItem(storageKey);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${!isImageMode ? "text-white" : "text-[#9B92AA]"}`}
+                style={!isImageMode ? { background: `linear-gradient(135deg, ${THEME.from}, ${THEME.to})` } : {}}
+              >
+                Chat
+              </button>
+              <button
+                onClick={() => {
+                  if (activeMode !== "image") {
+                    setActiveMode("image");
+                    setCurrentChatId(null);
+                    currentChatIdRef.current = null;
+                    setMessages([]);
+                    setLocalImages({});
+                    localStorage.removeItem(storageKey);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1 ${isImageMode ? "text-white" : "text-[#9B92AA]"}`}
+                style={isImageMode ? { background: `linear-gradient(135deg, ${THEME.from}, ${THEME.to})` } : {}}
+              >
+                <Wand2 size={12} /> Image Studio
+              </button>
+            </div>
           </div>
 
           <div className="flex gap-1.5 items-center">
@@ -1141,6 +1330,13 @@ export default function ChatInterface() {
             <button onClick={() => setIsCallActive(true)} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Voice call"><Phone size={16} /></button>
           </div>
         </header>
+
+        {/* 🖼️ NEW: small banner so it's always obvious which mode you're in */}
+        {isImageMode && (
+          <div className="px-5 py-2 text-xs flex items-center gap-2 border-b border-black/5" style={{ background: THEME.soft, color: THEME.text }}>
+            <Wand2 size={12} /> Image Studio — upload a photo, then describe the change. Every message here is treated as an edit.
+          </div>
+        )}
 
         {/* CALL OVERLAY */}
         <AnimatePresence>
@@ -1213,11 +1409,12 @@ export default function ChatInterface() {
                 setSelectedImage={setSelectedImage}
                 fileInputRef={fileInputRef}
                 handleFileSelect={handleFileSelect}
-                startListening={startListening}
-                isListening={isListening}
+                onMicClick={startDictation}
+                isListening={isDictating}
                 isLoading={isLoading}
                 themeFrom={THEME.from}
                 themeTo={THEME.to}
+                placeholder={isImageMode ? "Describe the edit you want… (attach a photo first)" : undefined}
               />
             </>
           ) : (
@@ -1286,11 +1483,12 @@ export default function ChatInterface() {
               setSelectedImage={setSelectedImage}
               fileInputRef={fileInputRef}
               handleFileSelect={handleFileSelect}
-              startListening={startListening}
-              isListening={isListening}
+              onMicClick={startDictation}
+              isListening={isDictating}
               isLoading={isLoading}
               themeFrom={THEME.from}
               themeTo={THEME.to}
+              placeholder={isImageMode ? "Describe the edit you want… (attach a photo first)" : undefined}
             />
           </footer>
         )}

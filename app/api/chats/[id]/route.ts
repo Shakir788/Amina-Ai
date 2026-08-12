@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: messages, error: msgError } = await supabase
     .from("messages")
-    .select("id, role, content, created_at")
+    .select("id, role, content, image_url, created_at") // 🆕 image_url added
     .eq("chat_id", id)
     .order("created_at", { ascending: true });
 
@@ -36,7 +36,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: msgError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ id: chat.id, title: chat.title, messages: messages || [] });
+  // 🆕 map snake_case -> camelCase so ChatInterface.tsx's `m.imageUrl` works directly
+  const mappedMessages = (messages || []).map((m: any) => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    imageUrl: m.image_url,
+    created_at: m.created_at,
+  }));
+
+  return NextResponse.json({ id: chat.id, title: chat.title, messages: mappedMessages });
 }
 
 // DELETE /api/chats/:id — delete a chat (messages cascade-delete via FK)
@@ -79,9 +88,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updateData: any = {};
   if (title !== undefined) updateData.title = title;
-  
-  // Note: Assuming you use snake_case in Supabase (is_pinned). 
-  if (isPinned !== undefined) updateData.is_pinned = isPinned; 
+
+  // Note: Assuming you use snake_case in Supabase (is_pinned).
+  if (isPinned !== undefined) updateData.is_pinned = isPinned;
 
   const { data: updatedChat, error } = await supabase
     .from("chats")

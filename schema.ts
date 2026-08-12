@@ -16,5 +16,6 @@ export const messages = pgTable("messages", {
     .notNull(),
   role: text("role").notNull(), // 'user' ya 'assistant'
   content: text("content").notNull(),
+  imageUrl: text("image_url"), // 🆕 optional — generated/edited image ka URL ya base64
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

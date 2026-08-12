@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { remember, recall } from "@/app/lib/aminaMemory";
 import { CORE_PROFILES } from "@/app/lib/profiles";
 import { generateImageWithGemini } from "@/app/lib/imageGen";
-import dns from 'node:dns'; 
+import dns from 'node:dns';
 import { processUniversalCommand } from "@/app/lib/system-logic";
 
 try { dns.setDefaultResultOrder('ipv4first'); } catch {}
@@ -33,11 +33,11 @@ const EMOTIONAL_KEYWORDS = [
 function detectLanguage(text: string): "en" | "hi" | "ar" | "fr" {
   const t = text.toLowerCase();
   if (/[؀-ۿ]/.test(text)) return "ar";
-  if (/[àâçéèêëîïôûùüÿœ]/.test(text)) return "fr"; 
+  if (/[àâçéèêëîïôûùüÿœ]/.test(text)) return "fr";
 
   const pattern = new RegExp(`\\b(${HINDI_KEYWORDS.join('|')})\\b`, 'i');
   if (pattern.test(t)) return "hi";
-  
+
   return "en";
 }
 
@@ -71,10 +71,10 @@ export async function POST(req: Request) {
     const options: Intl.DateTimeFormatOptions = {
         hour: '2-digit', minute: '2-digit', hour12: true
     };
-    
+
     const indiaTime = now.toLocaleTimeString('en-IN', { ...options, timeZone: 'Asia/Kolkata' });
     const moroccoTime = now.toLocaleTimeString('en-MA', { ...options, timeZone: 'Africa/Casablanca' });
-    
+
     const currentDate = now.toLocaleDateString('en-IN', {
       timeZone: 'Asia/Kolkata',
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     // ---------------------------------------------------------
     // 🧠 INTELLIGENT ROUTING & IDENTITY
     // ---------------------------------------------------------
-    
+
     let recalledMemories: string[] = [];
     try {
       if (userText) recalledMemories = await recall(userText, 3);
@@ -108,11 +108,11 @@ export async function POST(req: Request) {
     let forcedLang: "en" | "hi" | "ar" | "fr" | null = null;
 
     if (userContext.includes("Douaa")) {
-      forcedLang = null; 
+      forcedLang = null;
     }
 
     if (userContext.includes("Mohammad")) {
-      forcedLang = "hi"; 
+      forcedLang = "hi";
     }
 
     const lang = forcedLang ?? detectedLang;
@@ -194,8 +194,9 @@ You are witty, warm, and genuinely present — like a smart best friend who happ
 -------------------------
 🖼️ IMAGE GENERATION RULE
 -------------------------
-- When the user asks for an image (image, picture, photo, bana do, dikhao, generate image), call the imageGeneration tool directly rather than asking for permission again each time — that part is already agreed on.
+- When the user asks for a brand-new image (image, picture, photo, bana do, dikhao, generate image), call the generateImage tool directly rather than asking for permission again each time — that part is already agreed on.
 - Exception: if the request is for a photo of a real, identifiable person (a public figure, or a specific real individual by name), don't generate it — gently explain you can't create realistic images of real people, and offer an alternative (an illustration/stylized version, or a different idea).
+- If the user asks to EDIT or MODIFY an already-uploaded/existing photo (change, remove, replace something in a photo they shared), you do NOT have a tool for that here — gently tell them to switch to Image Studio mode for edits. Do NOT call generateImage for edit requests, it only makes brand-new images from scratch.
 
 -------------------------
 🧠 PAST MEMORIES (BACKGROUND CONTEXT ONLY)
@@ -276,8 +277,8 @@ You MUST ONLY reply to the LATEST message sent by the user in the active convers
               );
               const data = await res.json();
               if (!data.results?.length) return { raw_data: `No ${query} found in ${location}.` };
-              
-              const list = data.results.slice(0, 3).map((p: any) => 
+
+              const list = data.results.slice(0, 3).map((p: any) =>
                 `Name: ${p.name} | Place ID: ${p.place_id} | Rating: ${p.rating || "N/A"}`
               ).join("\n");
 
@@ -316,7 +317,7 @@ You MUST ONLY reply to the LATEST message sent by the user in the active convers
             }
           },
         }),
-  
+
         manageAmina: tool({
           description: "Universal tool to control phone hardware (flashlight, camera, volume), communication (WhatsApp, calls), and utilities (alarms, reminders).",
           parameters: z.object({
@@ -326,17 +327,17 @@ You MUST ONLY reply to the LATEST message sent by the user in the active convers
           }),
           execute: async ({ intent, query, value }) => {
             const result = await processUniversalCommand(intent, { query, value });
-            
+
             if (result.shouldExecuteHardware) {
-                data.append({ 
+                data.append({
                    type: 'HARDWARE_ACTION',
                    action: result.action,
-                   payload: result.payload 
+                   payload: result.payload
                 });
             }
 
-            return { 
-              raw_data: `[AMINA_SYSTEM_SIGNAL]: Action=${result.action} | Category=${result.category} | Details=${query}` 
+            return {
+              raw_data: `[AMINA_SYSTEM_SIGNAL]: Action=${result.action} | Category=${result.category} | Details=${query}`
             };
           },
         }),
@@ -359,25 +360,24 @@ You MUST ONLY reply to the LATEST message sent by the user in the active convers
           },
         }),
 
-        // 🔧 FIXED: generateImageWithGemini() already returns
-        // { success, imageUrl } (or { success:false, error }) — the old
-        // code re-wrapped that whole object as "imageUrl", which broke
-        // every image (imageUrl was an object, not a usable data URL).
+        // 🔧 Tool name in the description now matches the actual tool key
+        // (generateImage) — the prompt used to say "imageGeneration" which
+        // didn't exist. Also made explicit this is generate-only, not edit.
         generateImage: tool({
-          description: "Generate a brand-new AI image from a text description (not for editing an existing photo — use editImage for that).",
+          description: "Generate a brand-new AI image from a text description. This is only for creating a new image from scratch — it does NOT edit or modify an existing uploaded photo.",
           parameters: z.object({ prompt: z.string() }),
           execute: async ({ prompt }) => {
             const result = await generateImageWithGemini(prompt);
             if (result?.success && result.imageUrl) {
-              return { success: true, imageUrl: result.imageUrl };
+              return { success: true, imageUrl: result.imageUrl, source: result.source };
             }
             return { success: false, error: result?.error || "Failed to generate image." };
           },
         }),
       },
-      
+
       onFinish: async ({ text }) => {
-        data.close(); 
+        data.close();
 
         if (text && userText && shouldRemember(userText)) {
           try {
