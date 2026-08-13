@@ -7,7 +7,8 @@ import {
   Mail, Calendar, CheckCircle, Square, Download,
   Image as ImageIcon, Loader2, Gamepad2,
   Clock, CloudSun, Wind, Droplets, Search, Headphones,
-  Video, Monitor, Menu, ShoppingBag, Wand2
+  Video, Monitor, Menu, ShoppingBag, Wand2, Share2,
+  Paintbrush
 } from "lucide-react";
 import React, { useRef, useEffect, useState, ChangeEvent, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -22,6 +23,48 @@ import remarkGfm from 'remark-gfm';
 
 import { useRealtimeVoice } from './RealtimeVoice';
 import ChatSidebar from './ChatSidebar';
+import SmartChips from "./SmartChips";
+import ImageVault from './ImageVault';
+import SketchPad from './SketchPad'; // 🔥 NAYA IMPORT
+
+// ==========================================================
+// PREMIUM SOUND EFFECTS (Web Audio API) 🎵
+// ==========================================================
+const playSuccessSound = () => {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new AudioContext();
+    
+    // Main "Ting" sound
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime); // Note A5
+    osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.1); // Slide to A6
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05); // Fade in
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5); // Fade out
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.5);
+    
+    // Secondary "Sparkle" chord layer
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(1108.73, ctx.currentTime); // Note C#6
+    gain2.gain.setValueAtTime(0, ctx.currentTime);
+    gain2.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.1);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(ctx.currentTime + 0.05);
+    osc2.stop(ctx.currentTime + 0.6);
+  } catch (e) {
+    console.log("Audio not supported", e);
+  }
+};
 
 // ==========================================================
 // DESIGN TOKENS
@@ -443,6 +486,7 @@ const InputBar = ({
   themeFrom,
   themeTo,
   placeholder,
+  onSketchClick, // 🔥 Yahan add kiya
 }: {
   centered?: boolean;
   input: string;
@@ -458,6 +502,7 @@ const InputBar = ({
   themeFrom: string;
   themeTo: string;
   placeholder?: string;
+  onSketchClick?: () => void; // 🔥 Typescript error fix karne ke liye yahan add kiya
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -490,6 +535,14 @@ const InputBar = ({
       <form onSubmit={submitIfNotEmpty} className="relative flex items-end gap-2 bg-white border border-black/5 p-2 pl-4 rounded-3xl shadow-lg transition-all">
         <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
         <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[#B0A6C0] hover:text-[#5B5468] transition-colors mb-2"><Paperclip size={19} /></button>
+        
+        {/* 🔥 Yahan aa gaya tera Sketchpad ka button */}
+        {onSketchClick && (
+          <button type="button" onClick={onSketchClick} className="text-[#B0A6C0] hover:text-[#5B5468] transition-colors mb-2 ml-1" title="Sketchpad">
+            <Paintbrush size={18} />
+          </button>
+        )}
+
         <textarea
           ref={textareaRef}
           rows={1}
@@ -524,7 +577,6 @@ const InputBar = ({
     </div>
   );
 };
-
 // ==========================================================
 // CUTE IMAGE LOADING ANIMATION ✨
 // ==========================================================
@@ -554,7 +606,7 @@ const ImageLoadingAnimation = ({ text }: { text: string }) => {
 };
 
 // ==========================================================
-// MESSAGE CONTENT
+// MESSAGE CONTENT (Updated with Share Button)
 // ==========================================================
 const MessageContent = memo(
   ({ message, isLast, isLoading, localImage }: { message: any; isLast: boolean; isLoading: boolean; localImage?: string }) => {
@@ -563,7 +615,6 @@ const MessageContent = memo(
     const RenderContent = ({ text }: { text?: any }) => {
       if (!text || typeof text !== "string") return null;
 
-      // 🔥 THE MAGIC: Show cute animation instead of boring text!
       if (text === "Editing the photo…") {
         return <ImageLoadingAnimation text="Amina is weaving her magic... 🎨✨" />;
       }
@@ -578,6 +629,7 @@ const MessageContent = memo(
       );
     };
 
+    // 🔥 Download Logic
     const handleDownloadLocalImage = async (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -598,18 +650,57 @@ const MessageContent = memo(
       }
     };
 
+    // 🔥 Native Share Logic
+    const handleShareLocalImage = async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!localImage) return;
+      
+      try {
+        const res = await fetch(localImage);
+        const blob = await res.blob();
+        const file = new File([blob], `amina_art_${Date.now()}.jpg`, { type: blob.type });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: 'Amina AI Art',
+            text: 'Check out this awesome design I generated with Amina AI! ✨',
+            files: [file],
+          });
+        } else {
+          alert("Sharing directly is not supported on this browser. Please use the download button instead! 😅");
+        }
+      } catch (err) {
+        console.error("Share failed:", err);
+      }
+    };
+
     return (
       <div className="flex flex-col gap-2">
         {localImage && (
           <div className="rounded-xl overflow-hidden border border-black/5 mt-1 mb-2 shadow-sm bg-black/5 relative group">
             <img src={localImage} alt="Attached/Edited Result" className="w-full max-w-sm h-auto object-contain" />
-            <button
-              onClick={handleDownloadLocalImage}
-              className="absolute bottom-2 right-2 p-2 bg-white/90 hover:bg-white rounded-full shadow-sm opacity-90 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-              title="Download image"
-            >
-              <Download size={14} className="text-[#5B5468]" />
-            </button>
+            
+            {/* Action Buttons Container */}
+            <div className="absolute bottom-2 right-2 flex gap-2 opacity-90 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+              {/* Share Button */}
+              <button
+                onClick={handleShareLocalImage}
+                className="p-2 bg-white/90 hover:bg-white rounded-full shadow-sm"
+                title="Share image"
+              >
+                <Share2 size={14} className="text-[#5B5468]" />
+              </button>
+              
+              {/* Download Button */}
+              <button
+                onClick={handleDownloadLocalImage}
+                className="p-2 bg-white/90 hover:bg-white rounded-full shadow-sm"
+                title="Download image"
+              >
+                <Download size={14} className="text-[#5B5468]" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -641,9 +732,12 @@ function looksLikeImageEditRequest(text: string): boolean {
 // MAIN CHAT INTERFACE
 // ==========================================================
 export default function ChatInterface() {
-  const userName = "Douaa";
+  const userName = "Mohammad Shakir Salmani";
 
   const [localImages, setLocalImages] = useState<Record<string, string>>({});
+
+  const [imageStudioMessages, setImageStudioMessages] = useState<any[]>([]);
+  const [imageStudioLocalImages, setImageStudioLocalImages] = useState<Record<string, string>>({});
 
   const [isCallActive, setIsCallActive] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -654,14 +748,15 @@ export default function ChatInterface() {
   const [faceExpression, setFaceExpression] = useState<"idle" | "listening" | "speaking" | "thinking">("idle");
   const [showGame, setShowGame] = useState(false);
   const [showHeadphoneNotice, setShowHeadphoneNotice] = useState(false);
+  
+  // 🔥 NEW STATES FOR VAULT & SKETCHPAD
+  const [isVaultOpen, setIsVaultOpen] = useState(false);
+  const [isSketchpadOpen, setIsSketchpadOpen] = useState(false);
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // 🖼️ NEW: dedicated Image Studio mode — keeps image editing separate from normal chat
   const [activeMode, setActiveMode] = useState<"chat" | "image">("chat");
-
-  // 🎤 NEW: dictation state for mic-in-textbox (works outside of voice-call mode)
   const [isDictating, setIsDictating] = useState(false);
   const dictationRecRef = useRef<any>(null);
 
@@ -710,8 +805,6 @@ export default function ChatInterface() {
     },
   });
 
-  const storageKey = "amina_memory_bestie";
-
   async function ensureChatId(): Promise<string | null> {
     if (currentChatIdRef.current) return currentChatIdRef.current;
     try {
@@ -727,8 +820,6 @@ export default function ChatInterface() {
     }
   }
 
-  // 🔧 CHANGED: now accepts an optional imageUrl so generated/edited images
-  // get persisted to the DB and survive switching chats.
   async function saveMessageToDb(chatId: string, role: "user" | "assistant", content: string, imageUrl?: string) {
     try {
       await fetch(`/api/chats/${chatId}/messages`, {
@@ -759,8 +850,7 @@ export default function ChatInterface() {
     await append({ role: "user", content });
   }
 
-  // 🔧 CHANGED: now also rebuilds localImages from the saved imageUrl field
-  // so edited/generated photos don't disappear when you leave and come back.
+  // 🔥 FIX 1: Fetching both 'image_url' (DB) and 'imageUrl' formats safely
   async function resumeChat(id: string) {
     try {
       const res = await fetch(`/api/chats/${id}`);
@@ -772,7 +862,8 @@ export default function ChatInterface() {
 
       const imgs: Record<string, string> = {};
       (dataRes.messages || []).forEach((m: any) => {
-        if (m.imageUrl) imgs[m.id] = m.imageUrl;
+        const img = m.imageUrl || m.image_url; 
+        if (img) imgs[m.id] = img;
       });
       setLocalImages(imgs);
     } catch (e) {
@@ -796,40 +887,55 @@ export default function ChatInterface() {
   useEffect(() => { if (messages.length === 0) executedActionsRef.current.clear(); }, [messages]);
 
   const MAX_STORE_MESSAGES = 30;
+  const storageKey = "amina_memory_bestie";
 
-  // 🔥 Fix: LocalStorage se tabhi load karo jab explicit chat reset na hua ho
+  // 🔥 FIX 2: Reloading images from Local Storage (Guest mode persistence)
   useEffect(() => {
     if (!currentChatId) {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setMessages(parsed.slice(-MAX_STORE_MESSAGES));
-          } else {
-            setMessages([]);
+        try { 
+          const parsed = JSON.parse(saved); 
+          if (Array.isArray(parsed)) {
+            setMessages(parsed.slice(-MAX_STORE_MESSAGES)); 
+            
+            const imgs: Record<string, string> = {};
+            parsed.forEach((m: any) => {
+              if (m.imageUrl) imgs[m.id] = m.imageUrl;
+            });
+            setLocalImages(imgs);
           }
-        } catch {
-          setMessages([]);
-        }
+        } catch {}
       } else {
         setMessages([]);
       }
     }
   }, [currentChatId]);
 
+  // 🔥 FIX 3: Saving images properly to Local Storage
   useEffect(() => {
-    if (messages.length === 0 || currentChatId) return;
+    if ((messages.length === 0 && Object.keys(localImages).length === 0) || currentChatId) return;
     const toStore = messages.slice(-MAX_STORE_MESSAGES).map((m: any) => ({
-      id: m.id, role: m.role, content: typeof m.content === "string" ? m.content : "Image", toolInvocations: m.toolInvocations,
+      id: m.id, 
+      role: m.role, 
+      content: typeof m.content === "string" ? m.content : "Image", 
+      toolInvocations: m.toolInvocations,
+      imageUrl: localImages[m.id] || null 
     }));
     const idT = setTimeout(() => { try { localStorage.setItem(storageKey, JSON.stringify(toStore)); } catch {} }, 400);
     return () => clearTimeout(idT);
-  }, [messages, storageKey, currentChatId]);
+  }, [messages, localImages, storageKey, currentChatId]);
 
   const clearChat = () => {
+    if (activeMode === "image") {
+      if (confirm("Clear Image Studio session?")) {
+        setImageStudioMessages([]);
+        setImageStudioLocalImages({});
+      }
+      return;
+    }
     if (confirm("Delete conversation memory?")) {
-      localStorage.removeItem(storageKey); // 🔥 Remove local cache
+      localStorage.removeItem(storageKey);
       setMessages([]);
       setLocalImages({});
       stopSpeaking();
@@ -934,7 +1040,6 @@ export default function ChatInterface() {
     return () => clearTimeout(timeoutId);
   }, [messages, isLoading, isCallActive]);
 
-  // Used only inside the voice-call overlay (continuous, hands-free loop)
   const startListening = () => {
     if (isLiveModeRef.current) return;
     if (!isCallActive) return;
@@ -991,10 +1096,8 @@ export default function ChatInterface() {
     try { recognition.start(); } catch {}
   };
 
-  // 🎤 NEW: dictation for the normal typing box — fills `input`, does NOT auto-send.
-  // Works independently of the call overlay, so mic works wherever you type.
   const startDictation = () => {
-    if (isCallActive) { startListening(); return; } // inside call overlay, keep old behavior
+    if (isCallActive) { startListening(); return; } 
     if (isDictating) {
       try { dictationRecRef.current?.stop(); } catch {}
       return;
@@ -1055,7 +1158,6 @@ export default function ChatInterface() {
     else if (!isSpeaking && !isCallActive) setFaceExpression("idle");
   }, [isLoading, isSpeaking, isCallActive]);
 
-  // 🔧 CHANGED: bigger max size + higher jpeg quality so edited photos don't come out soft/blurry
   async function resizeAndToDataUrl(file: File): Promise<string> {
     return new Promise((resolve) => {
       const img = new Image();
@@ -1064,12 +1166,12 @@ export default function ChatInterface() {
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
-        const MAX_DIM = 1280; // was 800
+        const MAX_DIM = 1280; 
         const scale = Math.min(MAX_DIM / img.width, MAX_DIM / img.height, 1);
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.92)); // was 0.7
+        resolve(canvas.toDataURL("image/jpeg", 0.92)); 
       };
       reader.readAsDataURL(file);
     });
@@ -1081,9 +1183,15 @@ export default function ChatInterface() {
 
   function createEnhancedChainPrompt(newUserInstruction: string): string {
     const lowerUserMsg = (newUserInstruction || "").toLowerCase();
-    const strongPhotographicLock = "A highly detailed, high-resolution realistic photograph, highly detailed and realistic, preserving identity and subject look from the previous realistic edits in this thread, with their casual dress, now modified to include the new change: ";
-    const finalResultStyle = ". The final result must be a realistic photo, matching the style and identity, not a cartoon.";
-    return `${strongPhotographicLock}${lowerUserMsg}${finalResultStyle}`;
+    const isGraphicDesign = ["flyer", "poster", "banner", "logo", "design", "graphic", "text", "typography"].some(w => lowerUserMsg.includes(w));
+
+    if (isGraphicDesign) {
+      return `Create a highly professional graphic design based on this input: "${newUserInstruction}". Ensure excellent, legible modern typography, vibrant colors, clean layout, and premium marketing quality. Use the original image as a background or asset if provided. Do not force photorealism.`;
+    } else {
+      const strongPhotographicLock = "A highly detailed, high-resolution realistic photograph, highly detailed and realistic, preserving identity and subject look from the previous realistic edits in this thread, with their casual dress, now modified to include the new change: ";
+      const finalResultStyle = ". The final result must be a realistic photo, matching the style and identity, not a cartoon.";
+      return `${strongPhotographicLock}${lowerUserMsg}${finalResultStyle}`;
+    }
   }
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -1093,17 +1201,20 @@ export default function ChatInterface() {
     const userMessage = input;
     let imageToSend = selectedImage;
 
-    // 🖼️ CHANGED: in Image Studio mode we always treat this as an edit intent
-    // (skip the keyword-guessing heuristic entirely) — separates image editing
-    // from normal chat completely, like the old accountant mode used to be.
-    const wantsEdit = activeMode === "image" ? true : looksLikeImageEditRequest(userMessage);
+    const studioMode = activeMode === "image";
+    const activeMsgs = studioMode ? imageStudioMessages : messages;
+    const setActiveMsgs: any = studioMode ? setImageStudioMessages : setMessages;
+    const activeLocalImages = studioMode ? imageStudioLocalImages : localImages;
+    const setActiveLocalImages = studioMode ? setImageStudioLocalImages : setLocalImages;
+
+    const wantsEdit = studioMode ? true : looksLikeImageEditRequest(userMessage);
     let isChainEdit = false;
 
-    if (!imageToSend && wantsEdit && messages.length > 0) {
-      const reversedMessages = [...messages].reverse();
+    if (!imageToSend && wantsEdit && activeMsgs.length > 0) {
+      const reversedMessages = [...activeMsgs].reverse();
       for (const m of reversedMessages) {
-        if (localImages[m.id]) {
-          imageToSend = localImages[m.id];
+        if (activeLocalImages[m.id]) {
+          imageToSend = activeLocalImages[m.id];
           isChainEdit = true;
           break;
         }
@@ -1122,12 +1233,12 @@ export default function ChatInterface() {
       const userMsgId = Date.now().toString();
 
       if (selectedImage) {
-        setLocalImages((prev) => ({ ...prev, [userMsgId]: imageToSend as string }));
-        setMessages((prev) => [...prev, {
+        setActiveLocalImages((prev: Record<string, string>) => ({ ...prev, [userMsgId]: imageToSend as string }));
+        setActiveMsgs((prev: any[]) => [...prev, {
           id: userMsgId, role: "user", content: userMessage || "Analyze this image",
         } as any]);
       } else {
-        setMessages((prev) => [...prev, {
+        setActiveMsgs((prev: any[]) => [...prev, {
           id: userMsgId, role: "user", content: userMessage,
         } as any]);
       }
@@ -1135,7 +1246,7 @@ export default function ChatInterface() {
       const assistantMsgId = (Date.now() + 1).toString();
 
       if (wantsEdit) {
-        setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: "Editing the photo…" } as any]);
+        setActiveMsgs((prev: any[]) => [...prev, { id: assistantMsgId, role: "assistant", content: "Editing the photo…" } as any]);
         try {
           const wasNewChat = !currentChatIdRef.current;
           const enhancedInstruction = isChainEdit
@@ -1149,27 +1260,59 @@ export default function ChatInterface() {
           });
           const resData = await res.json();
 
-          if (resData.success && resData.imageUrl) {
-            setLocalImages((prev) => ({ ...prev, [assistantMsgId]: resData.imageUrl }));
-            setMessages((prev) => prev.map((m) => (m.id === assistantMsgId
-              ? { ...m, content: "Ye raha aapka result, kaisa laga? ✨" }
-              : m)));
-          } else {
-            setMessages((prev) => prev.map((m) => (m.id === assistantMsgId
-              ? { ...m, content: resData.error || "Edit nahi ho paya, dobara try karo." }
-              : m)));
-          }
+         if (resData.success && resData.imageUrl) {
+          playSuccessSound(); 
+          setActiveLocalImages((prev: Record<string, string>) => ({ ...prev, [assistantMsgId]: resData.imageUrl }));
+          setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId
+            ? { ...m, content: "Ye raha aapka result, kaisa laga? ✨" }
+            : m)));
+        }
 
+          if (!studioMode) {
+            const chatId = await ensureChatId();
+            if (chatId) {
+              const firstMessageText = userMessage;
+              saveMessageToDb(chatId, "user", firstMessageText, selectedImage ? (imageToSend as string) : undefined);
+              saveMessageToDb(
+                chatId,
+                "assistant",
+                resData.success ? "Ye raha aapka result, kaisa laga? ✨" : (resData.error || "Edit failed"),
+                resData.success ? resData.imageUrl : undefined
+              );
+              if (wasNewChat) {
+                fetch(`/api/chats/${chatId}/auto-rename`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ message: firstMessageText }),
+                })
+                  .then(() => window.dispatchEvent(new Event("chats-updated")))
+                  .catch((e) => console.error("Auto-rename failed:", e));
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Edit-image error:", err);
+          setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Error editing image." } : m)));
+        }
+        return;
+      }
+
+      setActiveMsgs((prev: any[]) => [...prev, { id: assistantMsgId, role: "assistant", content: "Looking at the image…" } as any]);
+      try {
+        const wasNewChat = !currentChatIdRef.current;
+        const res = await fetch("/api/vision", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: userMessage || "Analyze this image" }, { type: "image", image: imageToSend }] }] }),
+        });
+        const resData = await res.json();
+        setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: resData.text } : m)));
+
+        if (!studioMode) {
           const chatId = await ensureChatId();
           if (chatId) {
-            const firstMessageText = userMessage;
+            const firstMessageText = userMessage || "Analyze this image";
             saveMessageToDb(chatId, "user", firstMessageText, selectedImage ? (imageToSend as string) : undefined);
-            saveMessageToDb(
-              chatId,
-              "assistant",
-              resData.success ? "Ye raha aapka result, kaisa laga? ✨" : (resData.error || "Edit failed"),
-              resData.success ? resData.imageUrl : undefined
-            );
+            if (resData.text) saveMessageToDb(chatId, "assistant", resData.text);
             if (wasNewChat) {
               fetch(`/api/chats/${chatId}/auto-rename`, {
                 method: "POST",
@@ -1180,40 +1323,39 @@ export default function ChatInterface() {
                 .catch((e) => console.error("Auto-rename failed:", e));
             }
           }
-        } catch (err) {
-          console.error("Edit-image error:", err);
-          setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Error editing image." } : m)));
-        }
-        return;
-      }
-
-      setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: "Looking at the image…" } as any]);
-      try {
-        const wasNewChat = !currentChatIdRef.current;
-        const res = await fetch("/api/vision", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: userMessage || "Analyze this image" }, { type: "image", image: imageToSend }] }] }),
-        });
-        const resData = await res.json();
-        setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: resData.text } : m)));
-        const chatId = await ensureChatId();
-        if (chatId) {
-          const firstMessageText = userMessage || "Analyze this image";
-          saveMessageToDb(chatId, "user", firstMessageText, selectedImage ? (imageToSend as string) : undefined);
-          if (resData.text) saveMessageToDb(chatId, "assistant", resData.text);
-          if (wasNewChat) {
-            fetch(`/api/chats/${chatId}/auto-rename`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ message: firstMessageText }),
-            })
-              .then(() => window.dispatchEvent(new Event("chats-updated")))
-              .catch((e) => console.error("Auto-rename failed:", e));
-          }
         }
       } catch (err) {
         console.error("Vision error:", err);
-        setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m)));
+        setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m)));
+      }
+      return;
+    }
+
+   if (studioMode) {
+      const userMsgId = Date.now().toString();
+      const assistantMsgId = (Date.now() + 1).toString();
+      
+      setActiveMsgs((prev: any[]) => [...prev, { id: userMsgId, role: "user", content: userMessage } as any]);
+      setActiveMsgs((prev: any[]) => [...prev, { id: assistantMsgId, role: "assistant", content: "Editing the photo…" } as any]);
+
+      try {
+        const res = await fetch("/api/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: userMessage }),
+        });
+        const resData = await res.json();
+
+        if (resData.success && resData.imageUrl) {
+          playSuccessSound(); 
+          setActiveLocalImages((prev: Record<string, string>) => ({ ...prev, [assistantMsgId]: resData.imageUrl }));
+          setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Ye raha aapka naya design! Kaisa laga? ✨" } : m)));
+        } else {
+          setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: resData.error || "Generate nahi ho paya, dobara try karo." } : m)));
+        }
+      } catch (err) {
+        console.error("Generate error:", err);
+        setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Error generating image." } : m)));
       }
       return;
     }
@@ -1248,8 +1390,10 @@ export default function ChatInterface() {
     return () => { try { wakeWordRec.stop(); } catch {} };
   }, [isCallActive, isListening]);
 
-  const isChatEmpty = messages.length === 0;
   const isImageMode = activeMode === "image";
+  const displayMessages = isImageMode ? imageStudioMessages : messages;
+  const displayLocalImages = isImageMode ? imageStudioLocalImages : localImages;
+  const isChatEmpty = displayMessages.length === 0;
 
   return (
     <div className="fixed inset-0 flex bg-[#FDFCFE]">
@@ -1261,12 +1405,12 @@ export default function ChatInterface() {
           <ChatSidebar
             currentChatId={currentChatId}
             onSelectChat={resumeChat}
-            onNewChat={() => { 
-              setCurrentChatId(null); 
-              currentChatIdRef.current = null; 
-              setMessages([]); 
-              setLocalImages({}); 
-              localStorage.removeItem(storageKey); // 🔥 Fix 1
+            onNewChat={() => {
+              try { localStorage.removeItem(storageKey); } catch {}
+              setCurrentChatId(null);
+              currentChatIdRef.current = null;
+              setMessages([]);
+              setLocalImages({});
             }}
           />
         </div>
@@ -1285,35 +1429,16 @@ export default function ChatInterface() {
               {THEME.label}
             </div>
 
-            {/* 🖼️ NEW: chat / image studio toggle (With Fix 2: Screen Clearing) */}
             <div className="flex items-center bg-white rounded-full border border-black/5 p-0.5 ml-1">
               <button
-                onClick={() => {
-                  if (activeMode !== "chat") {
-                    setActiveMode("chat");
-                    setCurrentChatId(null);
-                    currentChatIdRef.current = null;
-                    setMessages([]);
-                    setLocalImages({});
-                    localStorage.removeItem(storageKey);
-                  }
-                }}
+                onClick={() => setActiveMode("chat")}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${!isImageMode ? "text-white" : "text-[#9B92AA]"}`}
                 style={!isImageMode ? { background: `linear-gradient(135deg, ${THEME.from}, ${THEME.to})` } : {}}
               >
                 Chat
               </button>
               <button
-                onClick={() => {
-                  if (activeMode !== "image") {
-                    setActiveMode("image");
-                    setCurrentChatId(null);
-                    currentChatIdRef.current = null;
-                    setMessages([]);
-                    setLocalImages({});
-                    localStorage.removeItem(storageKey);
-                  }
-                }}
+                onClick={() => setActiveMode("image")}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1 ${isImageMode ? "text-white" : "text-[#9B92AA]"}`}
                 style={isImageMode ? { background: `linear-gradient(135deg, ${THEME.from}, ${THEME.to})` } : {}}
               >
@@ -1323,6 +1448,11 @@ export default function ChatInterface() {
           </div>
 
           <div className="flex gap-1.5 items-center">
+            {/* 🔥 VAULT BUTTON */}
+            <button onClick={() => setIsVaultOpen(true)} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Amina Vault">
+              <ImageIcon size={16} />
+            </button>
+
             <button onClick={() => setVisionMode("camera")} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Camera"><Video size={16} /></button>
             <button onClick={() => setVisionMode("screen")} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Screen"><Monitor size={16} /></button>
             <button onClick={() => setShowGame(true)} className="p-2 hover:bg-black/5 rounded-full text-[#5B5468] transition-all" title="Stress buster"><Gamepad2 size={16} /></button>
@@ -1331,7 +1461,6 @@ export default function ChatInterface() {
           </div>
         </header>
 
-        {/* 🖼️ NEW: small banner so it's always obvious which mode you're in */}
         {isImageMode && (
           <div className="px-5 py-2 text-xs flex items-center gap-2 border-b border-black/5" style={{ background: THEME.soft, color: THEME.text }}>
             <Wand2 size={12} /> Image Studio — upload a photo, then describe the change. Every message here is treated as an edit.
@@ -1394,6 +1523,32 @@ export default function ChatInterface() {
 
         <AnimatePresence>{visionMode && <VisionManager mode={visionMode} onClose={() => setVisionMode(null)} onAnalysisComplete={handleVisionData} />}</AnimatePresence>
         <AnimatePresence>{showGame && <StressBuster onClose={() => setShowGame(false)} />}</AnimatePresence>
+        
+        {/* 🔥 VAULT & SKETCHPAD MODALS */}
+        <AnimatePresence>
+          {isVaultOpen && (
+            <ImageVault 
+              images={{ ...localImages, ...imageStudioLocalImages }} 
+              onClose={() => setIsVaultOpen(false)} 
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isSketchpadOpen && (
+            <SketchPad 
+              onClose={() => setIsSketchpadOpen(false)}
+              onSave={(dataUrl) => {
+                setSelectedImage(dataUrl);
+                setIsSketchpadOpen(false);
+                // Optional: Automatically trigger generation based on the sketch
+                if (isImageMode) {
+                  setInput("Make this sketch realistic and highly detailed.");
+                }
+              }}
+            />
+          )}
+        </AnimatePresence>
 
         {/* MESSAGES */}
         <main className={`flex-1 overflow-y-auto px-4 md:px-10 lg:px-24 relative z-10 w-full h-full flex flex-col ${isChatEmpty ? "justify-center items-center pb-16" : "pt-6 pb-28 scroll-smooth"}`}>
@@ -1415,17 +1570,19 @@ export default function ChatInterface() {
                 themeFrom={THEME.from}
                 themeTo={THEME.to}
                 placeholder={isImageMode ? "Describe the edit you want… (attach a photo first)" : undefined}
+                // 🔥 NAYA: Open Sketchpad function
+                onSketchClick={() => setIsSketchpadOpen(true)}
               />
             </>
           ) : (
             <div className="max-w-3xl mx-auto w-full flex flex-col">
-              {messages.map((m: any, i: number) => {
+              {displayMessages.map((m: any, i: number) => {
                 if (typeof m.content === "string" && m.content.startsWith("[VISION DETECTED]")) return null;
                 const hasContent = (m.content && typeof m.content === "string" && m.content.trim().length > 0) || (Array.isArray(m.content) && m.content.length > 0);
                 const hasTools = m.toolInvocations && m.toolInvocations.length > 0;
                 if (!hasContent && !hasTools) return null;
 
-                const isLastMessage = i === messages.length - 1;
+                const isLastMessage = i === displayMessages.length - 1;
 
                 return (
                   <div key={m.id} className="mb-6 w-full">
@@ -1441,7 +1598,7 @@ export default function ChatInterface() {
                                 message={m} 
                                 isLast={isLastMessage} 
                                 isLoading={isLoading} 
-                                localImage={localImages[m.id]} 
+                                localImage={displayLocalImages[m.id]} 
                               />
                             </div>
                           )}
@@ -1458,7 +1615,7 @@ export default function ChatInterface() {
                             message={m} 
                             isLast={isLastMessage} 
                             isLoading={isLoading} 
-                            localImage={localImages[m.id]} 
+                            localImage={displayLocalImages[m.id]} 
                           />
                         </div>
                       </div>
@@ -1475,6 +1632,10 @@ export default function ChatInterface() {
         {/* FOOTER INPUT */}
         {!isChatEmpty && (
           <footer className="absolute bottom-0 w-full p-4 pb-6 bg-gradient-to-t from-[#FDFCFE] via-[#FDFCFE]/90 to-transparent z-40">
+            <SmartChips 
+              isImageMode={isImageMode} 
+              onSelect={(chipPrompt) => setInput(chipPrompt)} 
+            />
             <InputBar
               input={input}
               handleInputChange={handleInputChange}
@@ -1489,10 +1650,17 @@ export default function ChatInterface() {
               themeFrom={THEME.from}
               themeTo={THEME.to}
               placeholder={isImageMode ? "Describe the edit you want… (attach a photo first)" : undefined}
+              // 🔥 NAYA: Open Sketchpad function
+              onSketchClick={() => setIsSketchpadOpen(true)}
             />
           </footer>
         )}
       </div>
     </div>
   );
+}
+
+// 🔥 UPDATE INPUT BAR WITH SKETCH ICON
+function InputBarWrapper(props: any) {
+  return <InputBar {...props} />;
 }

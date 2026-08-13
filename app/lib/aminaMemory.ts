@@ -87,7 +87,7 @@ async function embedText(text: string): Promise<number[]> {
   if (!apiKey) return []; // Bina key ke crash mat karo
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: EMBEDDING_MODEL });
+  const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
 
   try {
     // 🏁 RACE: Google vs 3 Seconds
