@@ -25,7 +25,7 @@ import { useRealtimeVoice } from './RealtimeVoice';
 import ChatSidebar from './ChatSidebar';
 import SmartChips from "./SmartChips";
 import ImageVault from './ImageVault';
-import SketchPad from './SketchPad'; // 🔥 NAYA IMPORT
+import SketchPad from './SketchPad'; 
 
 // ==========================================================
 // PREMIUM SOUND EFFECTS (Web Audio API) 🎵
@@ -577,6 +577,7 @@ const InputBar = ({
     </div>
   );
 };
+
 // ==========================================================
 // CUTE IMAGE LOADING ANIMATION ✨
 // ==========================================================
@@ -1196,6 +1197,14 @@ export default function ChatInterface() {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 🔥 SOUND FIX: Unlock Web Audio API strictly on user click
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContext();
+      ctx.resume();
+    } catch(err) {}
+
     if ((!input?.trim() && !selectedImage) || isLoading) return;
 
     const userMessage = input;
@@ -1395,6 +1404,16 @@ export default function ChatInterface() {
   const displayLocalImages = isImageMode ? imageStudioLocalImages : localImages;
   const isChatEmpty = displayMessages.length === 0;
 
+  // 🔥 VAULT FIX: Chat tools se aur local state se saari images extract karo
+  const allVaultImages = { ...localImages, ...imageStudioLocalImages };
+  messages.forEach(m => {
+    m.toolInvocations?.forEach((tool: any, idx: number) => {
+      if (tool.toolName === "generateImage" && tool.result?.imageUrl) {
+        allVaultImages[`tool_${m.id}_${idx}`] = tool.result.imageUrl;
+      }
+    });
+  });
+
   return (
     <div className="fixed inset-0 flex bg-[#FDFCFE]">
       <AmbientBackground />
@@ -1528,7 +1547,7 @@ export default function ChatInterface() {
         <AnimatePresence>
           {isVaultOpen && (
             <ImageVault 
-              images={{ ...localImages, ...imageStudioLocalImages }} 
+              images={allVaultImages} // 🔥 Yahan change kiya
               onClose={() => setIsVaultOpen(false)} 
             />
           )}
