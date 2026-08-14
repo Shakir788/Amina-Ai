@@ -1,6 +1,7 @@
 "use client";
 
 import { useChat } from "ai/react";
+import { useUser } from "@clerk/nextjs"; // 🔥 CLERK IMPORT FOR DYNAMIC NAME
 import {
   Send, Mic, Paperclip, Phone, X, Trash2,
   Heart, Music, MapPin, Sparkles,
@@ -716,24 +717,21 @@ const MessageContent = memo(
 );
 MessageContent.displayName = "MessageContent";
 
-const EDIT_INTENT_KEYWORDS = [
-  "change", "badal", "badlo", "replace", "remove", "hatao", "hata do",
-  "background", "backdrop", "model", "pose", "put this on", "wear",
-  "edit", "banao", "bana do", "generate", "add", "dress pe", "pehna",
-  "color", "colour", "rang", "different", "alag", "short", "style"
-];
-
-function looksLikeImageEditRequest(text: string): boolean {
-  const t = (text || "").toLowerCase();
-  if (!t.trim()) return true;
-  return EDIT_INTENT_KEYWORDS.some((k) => t.includes(k));
-}
+// ==========================================================
+// IMAGE INTENT ROUTING
+// ==========================================================
+// No hard-coded edit keywords are used here. The server-side
+// AI router decides whether the current message means EDIT,
+// ANALYZE, or normal CHAT when an image is available.
 
 // ==========================================================
 // MAIN CHAT INTERFACE
 // ==========================================================
 export default function ChatInterface() {
-  const userName = "Mohammad Shakir Salmani";
+  
+  // 🔥 CLERK: DYNAMIC NAME
+  const { user, isLoaded } = useUser();
+  const userName = isLoaded && user ? user.firstName || "User" : "User";
 
   const [localImages, setLocalImages] = useState<Record<string, string>>({});
 
@@ -1195,19 +1193,60 @@ export default function ChatInterface() {
     }
   }
 
+  async function classifyImageIntent(
+    userMessage: string,
+    hasImage: boolean,
+    activeMsgs: any[]
+  ): Promise<"EDIT" | "ANALYZE" | "CHAT"> {
+    if (!hasImage) return "CHAT";
+
+    try {
+      const recentContext = activeMsgs
+        .slice(-6)
+        .map((m: any) => {
+          const text = typeof m?.content === "string" ? m.content : "";
+          return `${m?.role || "unknown"}: ${text.slice(0, 500)}`;
+        })
+        .filter(Boolean)
+        .join("\n");
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intentOnly: true,
+          message: userMessage,
+          hasImage: true,
+          recentContext,
+        }),
+      });
+
+      if (!res.ok) return "CHAT";
+
+      const result = await res.json();
+      if (result.intent === "EDIT" || result.intent === "ANALYZE") {
+        return result.intent;
+      }
+    } catch (err) {
+      console.error("Image intent routing failed:", err);
+    }
+
+    return "CHAT";
+  }
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // 🔥 SOUND FIX: Unlock Web Audio API strictly on user click
+
+    // Unlock Web Audio API strictly on user interaction.
     try {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioContext();
       ctx.resume();
-    } catch(err) {}
+    } catch {}
 
     if ((!input?.trim() && !selectedImage) || isLoading) return;
 
-    const userMessage = input;
+    const userMessage = input.trim();
     let imageToSend = selectedImage;
 
     const studioMode = activeMode === "image";
@@ -1216,10 +1255,14 @@ export default function ChatInterface() {
     const activeLocalImages = studioMode ? imageStudioLocalImages : localImages;
     const setActiveLocalImages = studioMode ? setImageStudioLocalImages : setLocalImages;
 
-    const wantsEdit = studioMode ? true : looksLikeImageEditRequest(userMessage);
+    // Image Studio keeps its existing behaviour: it is explicitly an
+    // image-edit/generation workspace. Normal Chat uses AI routing.
+    let imageIntent: "EDIT" | "ANALYZE" | "CHAT" = studioMode ? "EDIT" : "CHAT";
     let isChainEdit = false;
 
-    if (!imageToSend && wantsEdit && activeMsgs.length > 0) {
+    // If no image was explicitly attached, recover the most recent image
+    // from the current conversation WITHOUT looking for keywords.
+    if (!imageToSend && !studioMode && activeMsgs.length > 0) {
       const reversedMessages = [...activeMsgs].reverse();
       for (const m of reversedMessages) {
         if (activeLocalImages[m.id]) {
@@ -1235,27 +1278,65 @@ export default function ChatInterface() {
       }
     }
 
+    // Ask the server-side AI router what the user means. This is semantic
+    // intent detection, so phrases like "table pe bethao use" work without
+    // maintaining a keyword list in the UI.
+    if (!studioMode && imageToSend) {
+      imageIntent = await classifyImageIntent(
+        userMessage || "Analyze this image",
+        true,
+        activeMsgs
+      );
+
+      // Preserve the old upload behaviour: when the user explicitly
+      // attached a photo, a non-edit request is treated as image analysis.
+      if (selectedImage && imageIntent === "CHAT") {
+        imageIntent = "ANALYZE";
+      }
+    }
+
     setInput("");
     setSelectedImage(null);
 
-    if (imageToSend) {
+    if (imageToSend && imageIntent !== "CHAT") {
       const userMsgId = Date.now().toString();
 
       if (selectedImage) {
-        setActiveLocalImages((prev: Record<string, string>) => ({ ...prev, [userMsgId]: imageToSend as string }));
-        setActiveMsgs((prev: any[]) => [...prev, {
-          id: userMsgId, role: "user", content: userMessage || "Analyze this image",
-        } as any]);
+        setActiveLocalImages((prev: Record<string, string>) => ({
+          ...prev,
+          [userMsgId]: imageToSend as string,
+        }));
+        setActiveMsgs((prev: any[]) => [
+          ...prev,
+          {
+            id: userMsgId,
+            role: "user",
+            content: userMessage || "Analyze this image",
+          } as any,
+        ]);
       } else {
-        setActiveMsgs((prev: any[]) => [...prev, {
-          id: userMsgId, role: "user", content: userMessage,
-        } as any]);
+        setActiveMsgs((prev: any[]) => [
+          ...prev,
+          {
+            id: userMsgId,
+            role: "user",
+            content: userMessage || "Analyze this image",
+          } as any,
+        ]);
       }
 
       const assistantMsgId = (Date.now() + 1).toString();
 
-      if (wantsEdit) {
-        setActiveMsgs((prev: any[]) => [...prev, { id: assistantMsgId, role: "assistant", content: "Editing the photo…" } as any]);
+      if (imageIntent === "EDIT") {
+        setActiveMsgs((prev: any[]) => [
+          ...prev,
+          {
+            id: assistantMsgId,
+            role: "assistant",
+            content: "Editing the photo…",
+          } as any,
+        ]);
+
         try {
           const wasNewChat = !currentChatIdRef.current;
           const enhancedInstruction = isChainEdit
@@ -1265,29 +1346,60 @@ export default function ChatInterface() {
           const res = await fetch("/api/edit-image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: imageToSend, instruction: enhancedInstruction }),
+            body: JSON.stringify({
+              image: imageToSend,
+              instruction: enhancedInstruction,
+            }),
           });
+
           const resData = await res.json();
 
-         if (resData.success && resData.imageUrl) {
-          playSuccessSound(); 
-          setActiveLocalImages((prev: Record<string, string>) => ({ ...prev, [assistantMsgId]: resData.imageUrl }));
-          setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId
-            ? { ...m, content: "Ye raha aapka result, kaisa laga? ✨" }
-            : m)));
-        }
+          if (resData.success && resData.imageUrl) {
+            playSuccessSound();
+            setActiveLocalImages((prev: Record<string, string>) => ({
+              ...prev,
+              [assistantMsgId]: resData.imageUrl,
+            }));
+
+            setActiveMsgs((prev: any[]) =>
+              prev.map((m) =>
+                m.id === assistantMsgId
+                  ? { ...m, content: "Ye raha aapka result, kaisa laga? ✨" }
+                  : m
+              )
+            );
+          } else {
+            setActiveMsgs((prev: any[]) =>
+              prev.map((m) =>
+                m.id === assistantMsgId
+                  ? { ...m, content: resData.error || "Edit failed" }
+                  : m
+              )
+            );
+          }
 
           if (!studioMode) {
             const chatId = await ensureChatId();
             if (chatId) {
               const firstMessageText = userMessage;
-              saveMessageToDb(chatId, "user", firstMessageText, selectedImage ? (imageToSend as string) : undefined);
+
+              // Preserve the existing DB/Vault flow.
+              saveMessageToDb(
+                chatId,
+                "user",
+                firstMessageText,
+                selectedImage ? (imageToSend as string) : undefined
+              );
+
               saveMessageToDb(
                 chatId,
                 "assistant",
-                resData.success ? "Ye raha aapka result, kaisa laga? ✨" : (resData.error || "Edit failed"),
+                resData.success
+                  ? "Ye raha aapka result, kaisa laga? ✨"
+                  : (resData.error || "Edit failed"),
                 resData.success ? resData.imageUrl : undefined
               );
+
               if (wasNewChat) {
                 fetch(`/api/chats/${chatId}/auto-rename`, {
                   method: "POST",
@@ -1301,27 +1413,77 @@ export default function ChatInterface() {
           }
         } catch (err) {
           console.error("Edit-image error:", err);
-          setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Error editing image." } : m)));
+          setActiveMsgs((prev: any[]) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: "Error editing image." }
+                : m
+            )
+          );
         }
+
         return;
       }
 
-      setActiveMsgs((prev: any[]) => [...prev, { id: assistantMsgId, role: "assistant", content: "Looking at the image…" } as any]);
+      // ANALYZE existing image.
+      setActiveMsgs((prev: any[]) => [
+        ...prev,
+        {
+          id: assistantMsgId,
+          role: "assistant",
+          content: "Looking at the image…",
+        } as any,
+      ]);
+
       try {
         const wasNewChat = !currentChatIdRef.current;
+
         const res = await fetch("/api/vision", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: userMessage || "Analyze this image" }, { type: "image", image: imageToSend }] }] }),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: userMessage || "Analyze this image",
+                  },
+                  {
+                    type: "image",
+                    image: imageToSend,
+                  },
+                ],
+              },
+            ],
+          }),
         });
+
         const resData = await res.json();
-        setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: resData.text } : m)));
+
+        setActiveMsgs((prev: any[]) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: resData.text || resData.error || "I couldn't analyze the image." }
+              : m
+          )
+        );
 
         if (!studioMode) {
           const chatId = await ensureChatId();
           if (chatId) {
             const firstMessageText = userMessage || "Analyze this image";
-            saveMessageToDb(chatId, "user", firstMessageText, selectedImage ? (imageToSend as string) : undefined);
-            if (resData.text) saveMessageToDb(chatId, "assistant", resData.text);
+            saveMessageToDb(
+              chatId,
+              "user",
+              firstMessageText,
+              selectedImage ? (imageToSend as string) : undefined
+            );
+            if (resData.text) {
+              saveMessageToDb(chatId, "assistant", resData.text);
+            }
+
             if (wasNewChat) {
               fetch(`/api/chats/${chatId}/auto-rename`, {
                 method: "POST",
@@ -1335,17 +1497,32 @@ export default function ChatInterface() {
         }
       } catch (err) {
         console.error("Vision error:", err);
-        setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Error analyzing image." } : m)));
+        setActiveMsgs((prev: any[]) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: "Error analyzing image." }
+              : m
+          )
+        );
       }
+
       return;
     }
 
-   if (studioMode) {
+    // Existing Image Studio flow stays intact.
+    if (studioMode) {
       const userMsgId = Date.now().toString();
       const assistantMsgId = (Date.now() + 1).toString();
-      
-      setActiveMsgs((prev: any[]) => [...prev, { id: userMsgId, role: "user", content: userMessage } as any]);
-      setActiveMsgs((prev: any[]) => [...prev, { id: assistantMsgId, role: "assistant", content: "Editing the photo…" } as any]);
+
+      setActiveMsgs((prev: any[]) => [
+        ...prev,
+        { id: userMsgId, role: "user", content: userMessage } as any,
+      ]);
+
+      setActiveMsgs((prev: any[]) => [
+        ...prev,
+        { id: assistantMsgId, role: "assistant", content: "Editing the photo…" } as any,
+      ]);
 
       try {
         const res = await fetch("/api/generate-image", {
@@ -1356,16 +1533,49 @@ export default function ChatInterface() {
         const resData = await res.json();
 
         if (resData.success && resData.imageUrl) {
-          playSuccessSound(); 
-          setActiveLocalImages((prev: Record<string, string>) => ({ ...prev, [assistantMsgId]: resData.imageUrl }));
-          setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Ye raha aapka naya design! Kaisa laga? ✨" } : m)));
+          playSuccessSound();
+          setActiveLocalImages((prev: Record<string, string>) => ({
+            ...prev,
+            [assistantMsgId]: resData.imageUrl,
+          }));
+          setActiveMsgs((prev: any[]) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: "Ye raha aapka naya design! Kaisa laga? ✨" }
+                : m
+            )
+          );
+
+          // Preserve Vault persistence.
+          const chatId = await ensureChatId();
+          if (chatId) {
+            saveMessageToDb(
+              chatId,
+              "assistant",
+              "Image generated in Studio",
+              resData.imageUrl
+            );
+          }
         } else {
-          setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: resData.error || "Generate nahi ho paya, dobara try karo." } : m)));
+          setActiveMsgs((prev: any[]) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: resData.error || "Generate nahi ho paya, dobara try karo." }
+                : m
+            )
+          );
         }
       } catch (err) {
         console.error("Generate error:", err);
-        setActiveMsgs((prev: any[]) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: "Error generating image." } : m)));
+        setActiveMsgs((prev: any[]) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: "Error generating image." }
+              : m
+          )
+        );
       }
+
       return;
     }
 
@@ -1516,7 +1726,7 @@ export default function ChatInterface() {
                 )}
               </AnimatePresence>
 
-              <h2 className="mt-10 text-2xl font-semibold text-[#231A2E]">{voiceGender === "female" ? "Amina" : "Mohammad"}</h2>
+              <h2 className="mt-10 text-2xl font-semibold text-[#231A2E]">{voiceGender === "female" ? "Amina" : userName}</h2>
               <p className="text-base mt-2 font-medium" style={{ color: THEME.text }}>
                 {isLiveMode
                   ? rtStatus === "live" ? (rtSpeaking ? "Amina speaking…" : "Listening (live)") : (rtStatus === "connecting" ? "Connecting…" : rtStatus)
@@ -1547,7 +1757,6 @@ export default function ChatInterface() {
         <AnimatePresence>
           {isVaultOpen && (
             <ImageVault 
-              images={allVaultImages} // 🔥 Yahan change kiya
               onClose={() => setIsVaultOpen(false)} 
             />
           )}

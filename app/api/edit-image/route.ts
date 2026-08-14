@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { editImageWithGemini } from "@/app/lib/editImageWithGemini";
 
+// 🔥 FIX: Extended timeout and forced dynamic rendering to prevent consecutive request failures
 export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {

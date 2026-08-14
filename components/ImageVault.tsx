@@ -1,15 +1,31 @@
-import React from 'react';
-import { X, Download, ImageIcon } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, Download, ImageIcon, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export default function ImageVault({ 
-  images, 
-  onClose 
-}: { 
-  images: Record<string, string>, 
-  onClose: () => void 
-}) {
-  const imageList = Object.values(images).reverse(); // Latest pehle dikhane ke liye
+export default function ImageVault({ onClose }: { onClose: () => void }) {
+  const [images, setImages] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // 🔥 NAYA: Component load hote hi nayi API se saari images fetch karega
+  useEffect(() => {
+    async function fetchGallery() {
+      try {
+        const res = await fetch('/api/images');
+        if (!res.ok) throw new Error("Failed to fetch gallery");
+        
+        const data = await res.json();
+        // data.images ek array hai jisme objects hain { image_url: "..." }
+        const urls = data.images.map((img: any) => img.image_url);
+        
+        setImages(urls);
+      } catch (err) {
+        console.error("Gallery fetch error:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchGallery();
+  }, []);
 
   const handleDownload = async (url: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -65,14 +81,19 @@ export default function ImageVault({
 
           {/* Vault Grid */}
           <div className="flex-1 overflow-y-auto p-6 bg-[#FAF8FC]">
-            {imageList.length === 0 ? (
+            {loading ? (
+              <div className="h-full flex flex-col items-center justify-center text-[#9B92AA] gap-3">
+                <Loader2 size={32} className="animate-spin text-[#A855F7]" />
+                <p>Loading your gallery...</p>
+              </div>
+            ) : images.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-[#9B92AA] gap-3">
                 <ImageIcon size={48} className="opacity-20" />
                 <p>No images yet. Start creating!</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 auto-rows-max">
-                {imageList.map((imgUrl, idx) => (
+                {images.map((imgUrl, idx) => (
                   <div key={idx} className="relative group rounded-2xl overflow-hidden border border-black/5 shadow-sm bg-white aspect-square flex items-center justify-center">
                     <img src={imgUrl} alt="Vault item" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     
