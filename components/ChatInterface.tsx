@@ -190,11 +190,16 @@ const RenderToolInvocation = memo(({ toolInvocation }: { toolInvocation: any }) 
   if (toolName === "playYoutube") return <YouTubePlayer toolInvocation={toolInvocation} />;
   if (toolName === "stopMusic") return <StopAction />;
 
+  // 🔥 FIX 2: Added Success Indicator for Search Tool
   if (toolName === "showSearchVisuals" || toolName === "googleSearch") {
+    const isDone = !!result; 
     return (
-      <div className="mt-2 flex items-center gap-2 text-xs text-[#9B92AA] bg-white/70 p-2 rounded-lg border border-black/5 w-fit">
-        <Search size={12} style={{ color: THEME.text }} className="animate-pulse" />
-        <span>Searching for: <span className="text-[#231A2E] font-medium">{args.query}</span>…</span>
+      <div className={`mt-2 flex items-center gap-2 text-xs p-2 rounded-lg border w-fit transition-all ${isDone ? "bg-[#F5F1FA] text-[#5B5468] border-black/5" : "bg-white/70 text-[#9B92AA] border-black/5 shadow-sm"}`}>
+        <Search size={12} className={isDone ? "" : "animate-pulse"} style={{ color: isDone ? "#9B92AA" : THEME.text }} />
+        <span>
+          {isDone ? "Searched for:" : "Searching for:"} <span className="text-[#231A2E] font-medium">{args.query}</span>
+        </span>
+        {isDone && <CheckCircle size={14} className="text-emerald-500 ml-1" />}
       </div>
     );
   }
@@ -487,7 +492,7 @@ const InputBar = ({
   themeFrom,
   themeTo,
   placeholder,
-  onSketchClick, // 🔥 Yahan add kiya
+  onSketchClick, 
 }: {
   centered?: boolean;
   input: string;
@@ -503,7 +508,7 @@ const InputBar = ({
   themeFrom: string;
   themeTo: string;
   placeholder?: string;
-  onSketchClick?: () => void; // 🔥 Typescript error fix karne ke liye yahan add kiya
+  onSketchClick?: () => void; 
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -537,7 +542,6 @@ const InputBar = ({
         <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
         <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[#B0A6C0] hover:text-[#5B5468] transition-colors mb-2"><Paperclip size={19} /></button>
         
-        {/* 🔥 Yahan aa gaya tera Sketchpad ka button */}
         {onSketchClick && (
           <button type="button" onClick={onSketchClick} className="text-[#B0A6C0] hover:text-[#5B5468] transition-colors mb-2 ml-1" title="Sketchpad">
             <Paintbrush size={18} />
@@ -717,12 +721,18 @@ const MessageContent = memo(
 );
 MessageContent.displayName = "MessageContent";
 
-// ==========================================================
-// IMAGE INTENT ROUTING
-// ==========================================================
-// No hard-coded edit keywords are used here. The server-side
-// AI router decides whether the current message means EDIT,
-// ANALYZE, or normal CHAT when an image is available.
+const EDIT_INTENT_KEYWORDS = [
+  "change", "badal", "badlo", "replace", "remove", "hatao", "hata do",
+  "background", "backdrop", "model", "pose", "put this on", "wear",
+  "edit", "banao", "bana do", "generate", "add", "dress pe", "pehna",
+  "color", "colour", "rang", "different", "alag", "short", "style"
+];
+
+function looksLikeImageEditRequest(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  if (!t.trim()) return true;
+  return EDIT_INTENT_KEYWORDS.some((k) => t.includes(k));
+}
 
 // ==========================================================
 // MAIN CHAT INTERFACE
@@ -1613,16 +1623,6 @@ export default function ChatInterface() {
   const displayMessages = isImageMode ? imageStudioMessages : messages;
   const displayLocalImages = isImageMode ? imageStudioLocalImages : localImages;
   const isChatEmpty = displayMessages.length === 0;
-
-  // 🔥 VAULT FIX: Chat tools se aur local state se saari images extract karo
-  const allVaultImages = { ...localImages, ...imageStudioLocalImages };
-  messages.forEach(m => {
-    m.toolInvocations?.forEach((tool: any, idx: number) => {
-      if (tool.toolName === "generateImage" && tool.result?.imageUrl) {
-        allVaultImages[`tool_${m.id}_${idx}`] = tool.result.imageUrl;
-      }
-    });
-  });
 
   return (
     <div className="fixed inset-0 flex bg-[#FDFCFE]">

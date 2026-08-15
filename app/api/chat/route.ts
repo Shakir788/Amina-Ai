@@ -515,19 +515,9 @@ You MUST ONLY reply to the LATEST message sent by the user in the active convers
               const data = await res.json();
               const items = data.items || [];
 
+              // 🔥 FIX 1: Removed metatags mapping. Only using snippets now to prevent API crash from huge payloads
               const combinedText = items
-                .map((i: any) => {
-                  const snippet = i.snippet || "";
-
-                  const meta =
-                    i.pagemap?.metatags
-                      ?.map((m: any) =>
-                        Object.values(m).join(" ")
-                      )
-                      .join(" ") || "";
-
-                  return `${snippet} ${meta}`;
-                })
+                .map((i: any) => i.snippet || "")
                 .join("\n\n");
 
               const phoneMatches =
