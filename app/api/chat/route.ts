@@ -58,6 +58,59 @@ function shouldRemember(text: string) {
 
 /*
  * ---------------------------------------------------------
+ * DUAL-MODEL ROUTING
+ * ---------------------------------------------------------
+ *
+ * gemini-3.5-flash is smarter/newer but currently breaks on
+ * multi-step tool calls (missing thought_signature — a Gemini
+ * 3.x requirement the AI SDK doesn't fully support yet).
+ * gemini-2.5-flash is fully stable with tool calling.
+ *
+ * So: if the message plausibly needs a tool, use 2.5-flash
+ * WITH tools attached. Otherwise, use 3.5-flash for a smarter
+ * reply with NO tools attached at all — that keeps 3.5-flash
+ * far away from ever hitting the thought_signature bug, since
+ * the bug only fires when a tool call happens across steps.
+ */
+const TOOL_INTENT_KEYWORDS = [
+  // search / info lookup
+  "search", "google", "news", "khoj", "dhundo", "latest", "kya ho raha",
+  "kya chal raha", "update", "aaj ka", "current",
+  // places / phone
+  "number", "phone", "address", "location", "kaha hai", "nearby", "map",
+  "showmap", "restaurant", "shop", "store",
+  // hardware / device control
+  "flashlight", "torch", "volume", "brightness", "whatsapp", "call karo",
+  "alarm", "reminder", "camera kholo", "screenshot",
+  // youtube / music
+  "play", "song", "music", "gana", "gaana", "chalao", "sunao", "youtube",
+  "video dikhao",
+  // email / calendar
+  "email", "mail bhejo", "schedule", "event", "meeting", "appointment",
+];
+
+function needsTools(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  return TOOL_INTENT_KEYWORDS.some((k) => t.includes(k));
+}
+
+// Also treat it as a tool-needing follow-up if Amina's OWN last reply was
+// clearly asking for something needed to complete a tool call (location,
+// place name, etc.) — otherwise a one-word reply like "dehradun" or
+// "haan" won't have any tool keyword itself and gets wrongly routed away
+// from the tool-capable model mid-conversation.
+const FOLLOWUP_CLARIFICATION_MARKERS = [
+  "current location", "aapki location", "kahan par ho", "kaha ho",
+  "which city", "konsa shehar", "location chahiye", "address bata",
+];
+
+function assistantAskedForToolInfo(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  return FOLLOWUP_CLARIFICATION_MARKERS.some((k) => t.includes(k));
+}
+
+/*
+ * ---------------------------------------------------------
  * IMAGE REQUEST DETECTION
  * ---------------------------------------------------------
  *
@@ -110,6 +163,7 @@ function isImageRequest(text: string): boolean {
 // When an image is available, the frontend asks this small
 // JSON-only router to understand the user's intent. This keeps
 // edit detection semantic instead of maintaining a keyword list.
+// (Plain text generation, no tool calls — safe on 3.5-flash.)
 async function classifyImageIntent(
   message: string,
   hasImage: boolean,
@@ -477,283 +531,292 @@ You MUST ONLY reply to the LATEST message sent by the user in the active convers
     }
 
     // ---------------------------------------------------------
-    // STREAM
+    // STREAM — dual-model routing (see needsTools() above)
     // ---------------------------------------------------------
 
+    // Look at the last few turns, not just this one message — a short
+    // follow-up reply ("dehradun 6 no pulia", "haan", "mili kya") has no
+    // tool keyword of its own but is still part of a tool-needing thread.
+    const recentSlice = messages.slice(-6);
+    const recentCombinedText = recentSlice
+      .map((m: any) => (typeof m.content === "string" ? m.content : ""))
+      .join(" ");
+    const lastAssistantMsg = [...recentSlice].reverse().find((m: any) => m.role === "assistant");
+    const lastAssistantText = typeof lastAssistantMsg?.content === "string" ? lastAssistantMsg.content : "";
+
+    const useTools =
+      needsTools(recentCombinedText) || assistantAskedForToolInfo(lastAssistantText);
+    const chatModelName = useTools ? "gemini-2.5-flash" : "gemini-3.5-flash";
+    console.log(`🧭 Model routing: "${chatModelName}" (tools ${useTools ? "ON" : "OFF"})`);
+
+    const toolsConfig = useTools
+      ? {
+          googleSearch: tool({
+            description:
+              'Search Google for information. IMPORTANT: If user asks for phone number, append "phone number" to the search query.',
+
+            parameters: z.object({
+              query: z.string()
+            }),
+
+            execute: async ({ query }: { query: string }) => {
+              if (!cxId || !apiKey) {
+                return {
+                  raw_data: "Search configuration missing."
+                };
+              }
+
+              try {
+                const res = await fetch(
+                  `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cxId}&q=${encodeURIComponent(query)}`
+                );
+
+                if (!res.ok) {
+                  throw new Error("Google API error");
+                }
+
+                const searchData = await res.json();
+                const items = searchData.items || [];
+
+                const combinedText = items
+                  .map((i: any) => i.snippet || "")
+                  .join("\n\n");
+
+                const phoneMatches =
+                  combinedText.match(
+                    /(\+91[\s-]?)?[6-9]\d{9}/g
+                  );
+
+                if (phoneMatches && phoneMatches.length > 0) {
+                  const uniquePhones =
+                    Array.from(new Set(phoneMatches));
+
+                  return {
+                    raw_data:
+                      `Phone numbers found:\n${uniquePhones.join(", ")}`
+                  };
+                }
+
+                return {
+                  raw_data:
+                    combinedText.trim().length > 0
+                      ? combinedText
+                      : "No clear information found."
+                };
+
+              } catch (err) {
+                console.error(
+                  "Google search error:",
+                  err
+                );
+
+                return {
+                  raw_data:
+                    "Search failed temporarily."
+                };
+              }
+            },
+          }),
+
+          findPlaces: tool({
+            description:
+              "Find places and get their Place IDs (Required for fetching phone numbers)",
+
+            parameters: z.object({
+              query: z.string(),
+              location: z.string(),
+            }),
+
+            execute: async ({ query, location }: { query: string; location: string }) => {
+              if (!apiKey) {
+                return {
+                  raw_data: "API Key missing."
+                };
+              }
+
+              try {
+                const res = await fetch(
+                  `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(`${query} in ${location}`)}&key=${apiKey}`
+                );
+
+                const placesData = await res.json();
+
+                if (!placesData.results?.length) {
+                  return {
+                    raw_data:
+                      `No ${query} found in ${location}.`
+                  };
+                }
+
+                const list = placesData.results
+                  .slice(0, 3)
+                  .map(
+                    (p: any) =>
+                      `Name: ${p.name} | Place ID: ${p.place_id} | Rating: ${p.rating || "N/A"}`
+                  )
+                  .join("\n");
+
+                return {
+                  raw_data:
+                    `Found places with IDs:\n${list}`
+                };
+
+              } catch {
+                return {
+                  raw_data:
+                    "Place search failed."
+                };
+              }
+            },
+          }),
+
+          getPlacePhone: tool({
+            description:
+              "Get verified phone number from Google Maps business profile",
+
+            parameters: z.object({
+              placeId: z.string(),
+            }),
+
+            execute: async ({ placeId }: { placeId: string }) => {
+              if (!apiKey) {
+                return {
+                  raw_data:
+                    "Maps API key missing."
+                };
+              }
+
+              try {
+                const res = await fetch(
+                  `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_phone_number,international_phone_number&key=${apiKey}`
+                );
+
+                const phoneData = await res.json();
+
+                const phone =
+                  phoneData.result?.formatted_phone_number ||
+                  phoneData.result?.international_phone_number;
+
+                if (!phone) {
+                  return {
+                    raw_data:
+                      "Is business ka phone number Google Maps par publicly visible nahi hai."
+                  };
+                }
+
+                return {
+                  raw_data:
+                    `Verified phone number:\n${phone}`
+                };
+
+              } catch {
+                return {
+                  raw_data:
+                    "Failed to fetch phone number."
+                };
+              }
+            },
+          }),
+
+          manageAmina: tool({
+            description:
+              "Universal tool to control phone hardware (flashlight, camera, volume), communication (WhatsApp, calls), and utilities (alarms, reminders).",
+
+            parameters: z.object({
+              intent: z.enum([
+                'flashlight',
+                'volume',
+                'brightness',
+                'whatsapp',
+                'call',
+                'alarm',
+                'reminder',
+                'camera',
+                'youtube',
+                'location',
+                'search',
+                'image'
+              ]),
+
+              query: z
+                .string()
+                .describe(
+                  "Details of the request (e.g., person name, time, or specific search query)"
+                ),
+
+              value: z
+                .string()
+                .optional()
+                .describe(
+                  "Numeric value if needed (e.g., volume level or brightness percentage)"
+                )
+            }),
+
+            execute: async ({ intent, query, value }: { intent: string; query: string; value?: string }) => {
+              const result =
+                await processUniversalCommand(
+                  intent,
+                  { query, value }
+                );
+
+              if (result.shouldExecuteHardware) {
+                data.append({
+                  type: 'HARDWARE_ACTION',
+                  action: result.action,
+                  payload: result.payload
+                });
+              }
+
+              return {
+                raw_data:
+                  `[AMINA_SYSTEM_SIGNAL]: Action=${result.action} | Category=${result.category} | Details=${query}`
+              };
+            },
+          }),
+
+          playYoutube: tool({
+            description:
+              `Play a YouTube song when the user asks for: play, song, music, gana, gaana, chalao, sunao, YouTube`,
+
+            parameters: z.object({
+              query: z.string()
+            }),
+
+            execute: async ({ query }: { query: string }) => {
+              try {
+                const url =
+                  `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&key=${apiKey}`;
+
+                const res = await fetch(url);
+                const ytData = await res.json();
+
+                if (ytData?.items?.length) {
+                  return {
+                    videoId:
+                      ytData.items[0].id.videoId
+                  };
+                }
+
+                return {
+                  error: "No video found"
+                };
+
+              } catch {
+                return {
+                  error: "YouTube API failed"
+                };
+              }
+            },
+          }),
+        }
+      : undefined;
+
     const result = await streamText({
-      model: google("gemini-3.5-flash"),
+      model: google(chatModelName),
       system: SYSTEM_INSTRUCTION,
       temperature: 0.8,
       messages: messages,
-      maxSteps: 6,
-
-      tools: {
-        googleSearch: tool({
-          description:
-            'Search Google for information. IMPORTANT: If user asks for phone number, append "phone number" to the search query.',
-
-          parameters: z.object({
-            query: z.string()
-          }),
-
-          execute: async ({ query }) => {
-            if (!cxId || !apiKey) {
-              return {
-                raw_data: "Search configuration missing."
-              };
-            }
-
-            try {
-              const res = await fetch(
-                `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cxId}&q=${encodeURIComponent(query)}`
-              );
-
-              if (!res.ok) {
-                throw new Error("Google API error");
-              }
-
-              const data = await res.json();
-              const items = data.items || [];
-
-              // 🔥 FIX 1: Removed metatags mapping. Only using snippets now to prevent API crash from huge payloads
-              const combinedText = items
-                .map((i: any) => i.snippet || "")
-                .join("\n\n");
-
-              const phoneMatches =
-                combinedText.match(
-                  /(\+91[\s-]?)?[6-9]\d{9}/g
-                );
-
-              if (phoneMatches && phoneMatches.length > 0) {
-                const uniquePhones =
-                  Array.from(new Set(phoneMatches));
-
-                return {
-                  raw_data:
-                    `Phone numbers found:\n${uniquePhones.join(", ")}`
-                };
-              }
-
-              return {
-                raw_data:
-                  combinedText.trim().length > 0
-                    ? combinedText
-                    : "No clear information found."
-              };
-
-            } catch (err) {
-              console.error(
-                "Google search error:",
-                err
-              );
-
-              return {
-                raw_data:
-                  "Search failed temporarily."
-              };
-            }
-          },
-        }),
-
-        findPlaces: tool({
-          description:
-            "Find places and get their Place IDs (Required for fetching phone numbers)",
-
-          parameters: z.object({
-            query: z.string(),
-            location: z.string(),
-          }),
-
-          execute: async ({
-            query,
-            location
-          }) => {
-            if (!apiKey) {
-              return {
-                raw_data: "API Key missing."
-              };
-            }
-
-            try {
-              const res = await fetch(
-                `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(`${query} in ${location}`)}&key=${apiKey}`
-              );
-
-              const data = await res.json();
-
-              if (!data.results?.length) {
-                return {
-                  raw_data:
-                    `No ${query} found in ${location}.`
-                };
-              }
-
-              const list = data.results
-                .slice(0, 3)
-                .map(
-                  (p: any) =>
-                    `Name: ${p.name} | Place ID: ${p.place_id} | Rating: ${p.rating || "N/A"}`
-                )
-                .join("\n");
-
-              return {
-                raw_data:
-                  `Found places with IDs:\n${list}`
-              };
-
-            } catch {
-              return {
-                raw_data:
-                  "Place search failed."
-              };
-            }
-          },
-        }),
-
-        getPlacePhone: tool({
-          description:
-            "Get verified phone number from Google Maps business profile",
-
-          parameters: z.object({
-            placeId: z.string(),
-          }),
-
-          execute: async ({ placeId }) => {
-            if (!apiKey) {
-              return {
-                raw_data:
-                  "Maps API key missing."
-              };
-            }
-
-            try {
-              const res = await fetch(
-                `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_phone_number,international_phone_number&key=${apiKey}`
-              );
-
-              const data = await res.json();
-
-              const phone =
-                data.result?.formatted_phone_number ||
-                data.result?.international_phone_number;
-
-              if (!phone) {
-                return {
-                  raw_data:
-                    "Is business ka phone number Google Maps par publicly visible nahi hai."
-                };
-              }
-
-              return {
-                raw_data:
-                  `Verified phone number:\n${phone}`
-              };
-
-            } catch {
-              return {
-                raw_data:
-                  "Failed to fetch phone number."
-              };
-            }
-          },
-        }),
-
-        manageAmina: tool({
-          description:
-            "Universal tool to control phone hardware (flashlight, camera, volume), communication (WhatsApp, calls), and utilities (alarms, reminders).",
-
-          parameters: z.object({
-            intent: z.enum([
-              'flashlight',
-              'volume',
-              'brightness',
-              'whatsapp',
-              'call',
-              'alarm',
-              'reminder',
-              'camera',
-              'youtube',
-              'location',
-              'search',
-              'image'
-            ]),
-
-            query: z
-              .string()
-              .describe(
-                "Details of the request (e.g., person name, time, or specific search query)"
-              ),
-
-            value: z
-              .string()
-              .optional()
-              .describe(
-                "Numeric value if needed (e.g., volume level or brightness percentage)"
-              )
-          }),
-
-          execute: async ({
-            intent,
-            query,
-            value
-          }) => {
-            const result =
-              await processUniversalCommand(
-                intent,
-                { query, value }
-              );
-
-            if (result.shouldExecuteHardware) {
-              data.append({
-                type: 'HARDWARE_ACTION',
-                action: result.action,
-                payload: result.payload
-              });
-            }
-
-            return {
-              raw_data:
-                `[AMINA_SYSTEM_SIGNAL]: Action=${result.action} | Category=${result.category} | Details=${query}`
-            };
-          },
-        }),
-
-        playYoutube: tool({
-          description:
-            `Play a YouTube song when the user asks for: play, song, music, gana, gaana, chalao, sunao, YouTube`,
-
-          parameters: z.object({
-            query: z.string()
-          }),
-
-          execute: async ({ query }) => {
-            try {
-              const url =
-                `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&key=${apiKey}`;
-
-              const res = await fetch(url);
-              const data = await res.json();
-
-              if (data?.items?.length) {
-                return {
-                  videoId:
-                    data.items[0].id.videoId
-                };
-              }
-
-              return {
-                error: "No video found"
-              };
-
-            } catch {
-              return {
-                error: "YouTube API failed"
-              };
-            }
-          },
-        }),
-      },
+      ...(useTools ? { maxSteps: 6, tools: toolsConfig } : {}),
 
       onFinish: async ({ text }) => {
         data.close();

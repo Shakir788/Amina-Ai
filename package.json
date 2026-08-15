@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@ai-sdk/google": "^0.0.55",
+    "@ai-sdk/google": "^1.2.22",
     "@capacitor-community/text-to-speech": "^6.1.0",
     "@capacitor/android": "^8.0.1",
     "@capacitor/camera": "^8.0.0",
@@ -26,7 +26,7 @@
     "@supabase/supabase-js": "^2.112.2",
     "@tailwindcss/typography": "^0.5.19",
     "@types/three": "^0.182.0",
-    "ai": "^3.4.33",
+    "ai": "^4.3.19",
     "cheerio": "^1.1.2",
     "clsx": "^2.1.1",
     "cordova-plugin-flashlight": "^3.2.0",
