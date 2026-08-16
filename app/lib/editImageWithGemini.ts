@@ -4,7 +4,6 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY });
 
-// 🔥 THE UPGRADE: Changed from "flash" (basic) to "pro" (premium photorealistic)
 const IMAGE_MODEL = "gemini-3-pro-image";
 
 export interface EditImageResult {
@@ -35,7 +34,6 @@ export async function editImageWithGemini(
           ],
         },
       ],
-      // ✅ Tells the model we specifically want an IMAGE back
       config: {
         responseModalities: ["TEXT", "IMAGE"],
       },

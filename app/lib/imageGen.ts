@@ -50,6 +50,12 @@ export interface GenerateImageResult {
  * ---------------------------------------------------------
  * GEMINI NATIVE IMAGE GENERATION
  * ---------------------------------------------------------
+ *
+ * Returns a plain base64 data URL. app/api/chats/[id]/messages/route.ts
+ * is the single canonical place that uploads this to Supabase Storage
+ * (bucket "chat-images") and swaps it for a permanent public URL when
+ * the message is saved — keeping one upload path instead of two.
+ * ---------------------------------------------------------
  */
 
 export async function generateImageWithGemini(
